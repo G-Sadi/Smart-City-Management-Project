@@ -18,7 +18,13 @@ from fastapi.security import OAuth2PasswordBearer
 import jwt
 from sqlalchemy import create_engine, func, or_
 from sqlalchemy.orm import sessionmaker, Session
+from pathlib import Path
 from dotenv import load_dotenv
+
+backend_dir = Path(__file__).resolve().parent
+root_dir = backend_dir.parent
+load_dotenv(backend_dir / ".env")
+load_dotenv(root_dir / ".env")
 
 from models import (
     Base, Agency, UserType, Constraint, Project, Proposal, Component, CitizenFeedback, IngestionAudit
@@ -30,13 +36,12 @@ from schemas import (
     ComponentOut, ComponentProgressUpdate,
     AgencyOut, ConstraintOut, ConstraintCreate,
     CitizenFeedbackCreate, CitizenFeedbackOut,
-    IngestionAuditOut, AIAdvisorRequest, AIAdvisorResponse
+    IngestionAuditOut, AIAdvisorRequest, AIAdvisorResponse,
+    AIStatusResponse, AIChatRequest
 )
 from csv_loader import ingest_all_csvs
 from scheduler_engine import RCPSPScheduler
-from ai_service import generate_ai_advisor_response
-
-load_dotenv()
+from ai_service import generate_ai_advisor_response, get_ai_status, stream_ai_advisor_chunks
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("smart_city_api")
 
@@ -910,6 +915,11 @@ def get_audit_reports(db: Session = Depends(get_db)):
     return results
 
 # ----------------- AI Copilot Module -----------------
+@app.get("/api/ai/status", response_model=AIStatusResponse)
+def ai_status(db: Session = Depends(get_db)):
+    status_data = get_ai_status(db)
+    return AIStatusResponse(**status_data)
+
 @app.post("/api/ai-advisor", response_model=AIAdvisorResponse)
 def ai_advisor(req: AIAdvisorRequest, db: Session = Depends(get_db)):
     res = generate_ai_advisor_response(
@@ -917,9 +927,35 @@ def ai_advisor(req: AIAdvisorRequest, db: Session = Depends(get_db)):
         db=db,
         project_id=req.project_id,
         proposal_id=req.proposal_id,
-        user_prompt=req.user_prompt
+        user_prompt=req.user_prompt,
+        mode=req.mode
     )
     return AIAdvisorResponse(**res)
+
+@app.post("/api/ai/chat", response_model=AIAdvisorResponse)
+def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
+    res = generate_ai_advisor_response(
+        query_type="general",
+        db=db,
+        project_id=req.project_id,
+        proposal_id=req.proposal_id,
+        user_prompt=req.prompt,
+        mode=req.mode
+    )
+    return AIAdvisorResponse(**res)
+
+@app.post("/api/ai/chat/stream")
+async def ai_chat_stream(req: AIChatRequest, db: Session = Depends(get_db)):
+    return StreamingResponse(
+        stream_ai_advisor_chunks(
+            user_prompt=req.prompt,
+            mode=req.mode,
+            db=db,
+            project_id=req.project_id,
+            proposal_id=req.proposal_id
+        ),
+        media_type="text/event-stream"
+    )
 
 # ----------------- Analytics & Dashboards -----------------
 @app.get("/api/analytics/overview")

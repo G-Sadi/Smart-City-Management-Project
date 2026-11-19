@@ -212,11 +212,25 @@ class IngestionAuditOut(BaseModel):
         from_attributes = True
 
 # ----------------- AI Advisor Schemas -----------------
+class AIStatusResponse(BaseModel):
+    connected: bool
+    provider: str = "server_env"
+    model: str = "gemini-2.5-flash"
+    latency_ms: float = 0.0
+    projects_indexed: int = 0
+
 class AIAdvisorRequest(BaseModel):
     query_type: str = "bottleneck"  # 'bottleneck', 'feedback_summary', 'dpp_recommendation', 'general'
     project_id: Optional[str] = None
     proposal_id: Optional[str] = None
     user_prompt: Optional[str] = None
+    mode: str = "instant"  # 'instant' or 'deep'
+
+class AIChatRequest(BaseModel):
+    prompt: str
+    mode: str = "instant"  # 'instant' or 'deep'
+    project_id: Optional[str] = None
+    proposal_id: Optional[str] = None
 
 class AIAdvisorResponse(BaseModel):
     analysis: str

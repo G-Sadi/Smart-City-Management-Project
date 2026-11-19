@@ -1225,21 +1225,21 @@ class BrowserEngine {
     }
   }
 
-  public getAIAdvice(queryType: string, _projectId?: string, _proposal?: string, prompt?: string): AIAdvisorResponse {
+  public getAIAdvice(queryType: string, _projectId?: string, _proposal?: string, prompt?: string, mode: 'instant' | 'deep' = 'instant'): AIAdvisorResponse {
     const rawQ = prompt || queryType || '';
     const q = rawQ.toLowerCase();
-    const isBangla = /[\u0980-\u09FF]/.test(rawQ) || 
-      q.includes('ki hobe') || q.includes('deri') || q.includes('shobcheye') || 
-      q.includes('taka') || q.includes('koto') || q.includes('komle') || 
+    const isBangla = /[\u0980-\u09FF]/.test(rawQ) ||
+      q.includes('ki hobe') || q.includes('deri') || q.includes('shobcheye') ||
+      q.includes('taka') || q.includes('koto') || q.includes('komle') ||
       q.includes('pichale') || q.includes('obostha') || q.includes('atke');
 
     // ----------------------------------------------------
     // Scenario A: Natural Language "What-If" Simulation
     // ----------------------------------------------------
     if (
-      q.includes('what if') || q.includes('simulate') || 
-      q.includes('ki hobe') || q.includes('delay korle') || 
-      q.includes('komle') || q.includes('pichale') || q.includes('koman') || 
+      q.includes('what if') || q.includes('simulate') ||
+      q.includes('ki hobe') || q.includes('delay korle') ||
+      q.includes('komle') || q.includes('pichale') || q.includes('koman') ||
       q.includes('cut') || (q.includes('budget') && (q.includes('drop') || q.includes('reduce')))
     ) {
       const sim = this.simulateWhatIf(q);
@@ -1272,33 +1272,33 @@ class BrowserEngine {
         projectId: p.project_id
       }));
 
-      const tableRows = sim.affectedProjects.map(p => 
+      const tableRows = sim.affectedProjects.map(p =>
         `| \`${p.project_id}\` | **${p.name.substring(0, 26)}...** | ${p.exec} | ${p.originalEnd} | **${p.newProjectedEnd}** | **+${p.slippageDays}d** |`
       ).join('\n');
 
       const analysis = isBangla
         ? `### 🧪 সিমুলেশন ফলাফল: ${sim.scenarioTitle}\n\n` +
-          `সিভিকগ্রিড আরসিপিএসপি (RCPSP) ইঞ্জিনে প্রদত্ত শর্তাবলীর উপর ভিত্তি করে সিমুলেশন সম্পন্ন হয়েছে:\n\n` +
-          `- **সামগ্রিক মেকস্প্যান বৃদ্ধি (Makespan Delta):** +**${sim.makespanDeltaDays} দিন** (বেসলাইন: ${sim.baselineMakespanDays} দিন ➔ সিমুলেটেড: ${sim.simulatedMakespanDays} দিন)\n` +
-          `- **নতুন বিলম্বিত প্রকল্প (Newly Delayed Projects):** **${sim.newlyDelayedProjectsCount} টি প্রকল্প**\n` +
-          `- **ঝুঁকিপূর্ণ বাজেট (Capital at Risk):** **${sim.fiscalImpactCrTk} কোটি টাকা**\n\n` +
-          `#### 📋 সরাসরি ও পরোক্ষভাবে প্রভাবিত প্রকল্পসমূহ (Downstream Impact):\n\n` +
-          `| Project ID | Project Name | Agency | Original End | Simulated End | Delay |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### 🎯 প্রস্তাবিত পদক্ষেপ:\n` +
-          sim.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')
+        `সিভিকগ্রিড আরসিপিএসপি (RCPSP) ইঞ্জিনে প্রদত্ত শর্তাবলীর উপর ভিত্তি করে সিমুলেশন সম্পন্ন হয়েছে:\n\n` +
+        `- **সামগ্রিক মেকস্প্যান বৃদ্ধি (Makespan Delta):** +**${sim.makespanDeltaDays} দিন** (বেসলাইন: ${sim.baselineMakespanDays} দিন ➔ সিমুলেটেড: ${sim.simulatedMakespanDays} দিন)\n` +
+        `- **নতুন বিলম্বিত প্রকল্প (Newly Delayed Projects):** **${sim.newlyDelayedProjectsCount} টি প্রকল্প**\n` +
+        `- **ঝুঁকিপূর্ণ বাজেট (Capital at Risk):** **${sim.fiscalImpactCrTk} কোটি টাকা**\n\n` +
+        `#### 📋 সরাসরি ও পরোক্ষভাবে প্রভাবিত প্রকল্পসমূহ (Downstream Impact):\n\n` +
+        `| Project ID | Project Name | Agency | Original End | Simulated End | Delay |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### 🎯 প্রস্তাবিত পদক্ষেপ:\n` +
+        sim.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')
         : `### 🧪 What-If Simulation: ${sim.scenarioTitle}\n\n` +
-          `RCPSP sandbox executed non-destructively across active municipal project registry:\n\n` +
-          `- **Makespan Delta:** +**${sim.makespanDeltaDays} Days** (Baseline: ${sim.baselineMakespanDays}d ➔ Simulated: ${sim.simulatedMakespanDays}d)\n` +
-          `- **Newly Delayed Projects:** **${sim.newlyDelayedProjectsCount} Projects** transitioned to delayed status\n` +
-          `- **Capital Under Delay Risk:** **${sim.fiscalImpactCrTk} Crore BDT**\n\n` +
-          `#### 📋 Primary & Cascading Downstream Project Impact:\n\n` +
-          `| Project ID | Project Name | Agency | Original End | Simulated End | Slippage |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### 🎯 Strategic Engineering Countermeasures:\n` +
-          sim.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n');
+        `RCPSP sandbox executed non-destructively across active municipal project registry:\n\n` +
+        `- **Makespan Delta:** +**${sim.makespanDeltaDays} Days** (Baseline: ${sim.baselineMakespanDays}d ➔ Simulated: ${sim.simulatedMakespanDays}d)\n` +
+        `- **Newly Delayed Projects:** **${sim.newlyDelayedProjectsCount} Projects** transitioned to delayed status\n` +
+        `- **Capital Under Delay Risk:** **${sim.fiscalImpactCrTk} Crore BDT**\n\n` +
+        `#### 📋 Primary & Cascading Downstream Project Impact:\n\n` +
+        `| Project ID | Project Name | Agency | Original End | Simulated End | Slippage |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### 🎯 Strategic Engineering Countermeasures:\n` +
+        sim.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n');
 
       return {
         analysis,
@@ -1393,33 +1393,33 @@ class BrowserEngine {
 
       const topAgencyProjects = this.projects.filter(p => p.exec === top.agency).slice(0, 5);
 
-      const tableRows = sorted.map(s => 
+      const tableRows = sorted.map(s =>
         `| **${s.agency}** | ${s.total} | ${s.delayed} | **${s.delayRate}%** | ${s.budget} Cr | ${s.spent} Cr |`
       ).join('\n');
 
       const analysis = isBangla
         ? `### 🏛️ মিউনিসিপ্যাল এজেন্সি বিলম্ব ও ঝুঁকি বিশ্লেষণ (Agency Delay Risk Audit)\n\n` +
-          `সিভিকগ্রিড আরসিপিএসপি ডায়াগনস্টিক **${this.projects.length} টি পৌর প্রকল্পের** উপর ভিত্তি করে **${sorted.length} টি নির্বাহী সংস্থার** কর্মক্ষমতা মূল্যায়ন করেছে:\n\n` +
-          `| Executing Agency | Total Projects | Delayed | Delay Rate | Allocated Budget | Disbursed Cost |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### 🔍 প্রধান পর্যবেক্ষণ:\n` +
-          `- **সর্বোচ্চ ঝুঁকিপূর্ণ সংস্থা:** **${top.agency}** সর্বোচ্চ সময়সূচী জটিলতার সম্মুখীন (**${top.delayRate}% প্রকল্প বিলম্বিত**)।\n` +
-          `- **আর্থিক প্রভাব:** প্রায় **${top.budget} কোটি টাকার** অবকাঠামোগত মূলধন উপাদান সংকটে আটকে আছে।\n\n` +
-          `#### 🎯 জরুরি সুপারিশসমূহ:\n` +
-          `1. ${top.agency}-এর জন্য ঠিকাদার লিকুইডিটি এবং সাইট ভিজিট মনিটরিং বাড়ানো।\n` +
-          `2. পরিকল্পনা কমিশন (Planning Commission) ও ${top.agency}-এর মধ্যে সাপ্তাহিক সমন্বয় নিশ্চিত করা।`
+        `সিভিকগ্রিড আরসিপিএসপি ডায়াগনস্টিক **${this.projects.length} টি পৌর প্রকল্পের** উপর ভিত্তি করে **${sorted.length} টি নির্বাহী সংস্থার** কর্মক্ষমতা মূল্যায়ন করেছে:\n\n` +
+        `| Executing Agency | Total Projects | Delayed | Delay Rate | Allocated Budget | Disbursed Cost |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### 🔍 প্রধান পর্যবেক্ষণ:\n` +
+        `- **সর্বোচ্চ ঝুঁকিপূর্ণ সংস্থা:** **${top.agency}** সর্বোচ্চ সময়সূচী জটিলতার সম্মুখীন (**${top.delayRate}% প্রকল্প বিলম্বিত**)।\n` +
+        `- **আর্থিক প্রভাব:** প্রায় **${top.budget} কোটি টাকার** অবকাঠামোগত মূলধন উপাদান সংকটে আটকে আছে।\n\n` +
+        `#### 🎯 জরুরি সুপারিশসমূহ:\n` +
+        `1. ${top.agency}-এর জন্য ঠিকাদার লিকুইডিটি এবং সাইট ভিজিট মনিটরিং বাড়ানো।\n` +
+        `2. পরিকল্পনা কমিশন (Planning Commission) ও ${top.agency}-এর মধ্যে সাপ্তাহিক সমন্বয় নিশ্চিত করা।`
         : `### 🏛️ Municipal Agency Delay Risk & Capacity Analysis\n\n` +
-          `Our RCPSP schedule diagnostic evaluated **${this.projects.length} municipal projects** across **${sorted.length} executing agencies**:\n\n` +
-          `| Executing Agency | Total Projects | Delayed | Delay Rate | Allocated Budget | Disbursed Cost |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### Executive Insights:\n` +
-          `- **Primary Vulnerability:** Agency **${top.agency}** exhibits the highest systemic timeline friction with **${top.delayed} delayed works** (${top.delayRate}% delay rate).\n` +
-          `- **Fiscal Impact:** A combined **${top.budget} Crore BDT** portfolio is constrained by component dependency lag.\n\n` +
-          `#### Immediate Recommendations:\n` +
-          `1. Reallocate active civil works to alternate secondary contractors.\n` +
-          `2. Enforce strict SLA liquidated damages for supply chain delays.`;
+        `Our RCPSP schedule diagnostic evaluated **${this.projects.length} municipal projects** across **${sorted.length} executing agencies**:\n\n` +
+        `| Executing Agency | Total Projects | Delayed | Delay Rate | Allocated Budget | Disbursed Cost |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### Executive Insights:\n` +
+        `- **Primary Vulnerability:** Agency **${top.agency}** exhibits the highest systemic timeline friction with **${top.delayed} delayed works** (${top.delayRate}% delay rate).\n` +
+        `- **Fiscal Impact:** A combined **${top.budget} Crore BDT** portfolio is constrained by component dependency lag.\n\n` +
+        `#### Immediate Recommendations:\n` +
+        `1. Reallocate active civil works to alternate secondary contractors.\n` +
+        `2. Enforce strict SLA liquidated damages for supply chain delays.`;
 
       return {
         analysis,
@@ -1451,7 +1451,7 @@ class BrowserEngine {
     // Scenario C: Zone Budget Utilization & Congestion Density
     // ----------------------------------------------------
     if (
-      q.includes('zone') || q.includes('location') || q.includes('budget utilization') || 
+      q.includes('zone') || q.includes('location') || q.includes('budget utilization') ||
       q.includes('tarabo') || q.includes('kanchan') || q.includes('daudpur') ||
       q.includes('বাজেট') || q.includes('জোন') || q.includes('জায়গা')
     ) {
@@ -1491,33 +1491,33 @@ class BrowserEngine {
         agency: 'Spatial / Municipal'
       }));
 
-      const tableRows = locDist.slice(0, 8).map(l => 
+      const tableRows = locDist.slice(0, 8).map(l =>
         `| **${l.location}** | ${l.project_count} | ${l.limit} | ${Math.round((l.project_count / l.limit) * 100)}% | **${l.total_budget} Cr** | ${l.avg_completion}% |`
       ).join('\n');
 
       const analysis = isBangla
         ? `### 📍 মিউনিসিপ্যাল জোন বাজেট ও ঘনত্ব সম্পৃক্ততা রিপোর্ট (Zone Budget & Saturation)\n\n` +
-          `**${locDist.length} টি পৌর জোনের** ভৌগোলিক বণ্টন ও বাজেট বিশ্লেষণ:\n\n` +
-          `| Municipal Zone | Active Projects | Max Limit | Saturation % | Total Budget | Avg Progress |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### 🔍 ভৌগোলিক পর্যবেক্ষণ:\n` +
-          `- **জোন ঘনত্ব:** ${overLimitLocs.length > 0 ? `জোন **${overLimitLocs[0].location}** সর্বোচ্চ অনুমোদিত প্রকল্প সীমা স্পর্শ করেছে।` : 'সকল জোন নির্ধারিত সীমার মধ্যে কার্যকর রয়েছে।'}\n` +
-          `- **সর্বোচ্চ মূলধন:** **${locDist[0].location}** জোনে সর্বাধিক **${locDist[0].total_budget} কোটি টাকা** বরাদ্দ।\n\n` +
-          `#### 🎯 সুপারিশসমূহ:\n` +
-          `1. সম্পৃক্ত জোনে নতুন খোঁড়াখুঁড়ি সাময়িক স্থগিত রাখা।\n` +
-          `2. গ্যাস, ওয়াসা ও বিদ্যুৎ লাইন একযোগে বসানোর জন্য সমন্বিত উইন্ডো প্রণয়ন।`
+        `**${locDist.length} টি পৌর জোনের** ভৌগোলিক বণ্টন ও বাজেট বিশ্লেষণ:\n\n` +
+        `| Municipal Zone | Active Projects | Max Limit | Saturation % | Total Budget | Avg Progress |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### 🔍 ভৌগোলিক পর্যবেক্ষণ:\n` +
+        `- **জোন ঘনত্ব:** ${overLimitLocs.length > 0 ? `জোন **${overLimitLocs[0].location}** সর্বোচ্চ অনুমোদিত প্রকল্প সীমা স্পর্শ করেছে।` : 'সকল জোন নির্ধারিত সীমার মধ্যে কার্যকর রয়েছে।'}\n` +
+        `- **সর্বোচ্চ মূলধন:** **${locDist[0].location}** জোনে সর্বাধিক **${locDist[0].total_budget} কোটি টাকা** বরাদ্দ।\n\n` +
+        `#### 🎯 সুপারিশসমূহ:\n` +
+        `1. সম্পৃক্ত জোনে নতুন খোঁড়াখুঁড়ি সাময়িক স্থগিত রাখা।\n` +
+        `2. গ্যাস, ওয়াসা ও বিদ্যুৎ লাইন একযোগে বসানোর জন্য সমন্বিত উইন্ডো প্রণয়ন।`
         : `### 📍 Municipal Zone Budget Utilization & Density Saturation Report\n\n` +
-          `Analysis of capital allocation and physical execution density across **${locDist.length} urban zones**:\n\n` +
-          `| Municipal Zone | Active Projects | Max Limit | Saturation % | Total Budget | Avg Progress |\n` +
-          `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
-          tableRows + `\n\n` +
-          `#### Strategic Engineering Assessment:\n` +
-          `- **Zone Congestion:** ${overLimitLocs.length > 0 ? `Zone **${overLimitLocs[0].location}** has hit statutory density limits.` : 'All zones operating within statutory headroom.'}\n` +
-          `- **Capital Concentration:** Highest capital volume is deployed in **${locDist[0].location}** (${locDist[0].total_budget} Crore BDT).\n\n` +
-          `#### Urban Governance Actions:\n` +
-          `1. Coordinate utility trenching schedules to avoid simultaneous traffic closures.\n` +
-          `2. Impose temporary moratorium on new non-critical approvals in saturated zones.`;
+        `Analysis of capital allocation and physical execution density across **${locDist.length} urban zones**:\n\n` +
+        `| Municipal Zone | Active Projects | Max Limit | Saturation % | Total Budget | Avg Progress |\n` +
+        `| :--- | :--- | :--- | :--- | :--- | :--- |\n` +
+        tableRows + `\n\n` +
+        `#### Strategic Engineering Assessment:\n` +
+        `- **Zone Congestion:** ${overLimitLocs.length > 0 ? `Zone **${overLimitLocs[0].location}** has hit statutory density limits.` : 'All zones operating within statutory headroom.'}\n` +
+        `- **Capital Concentration:** Highest capital volume is deployed in **${locDist[0].location}** (${locDist[0].total_budget} Crore BDT).\n\n` +
+        `#### Urban Governance Actions:\n` +
+        `1. Coordinate utility trenching schedules to avoid simultaneous traffic closures.\n` +
+        `2. Impose temporary moratorium on new non-critical approvals in saturated zones.`;
 
       return {
         analysis,
@@ -1542,7 +1542,7 @@ class BrowserEngine {
     // Scenario D: DAG Downstream Blockers & Critical Path
     // ----------------------------------------------------
     if (
-      q.includes('block') || q.includes('depend') || q.includes('dag') || 
+      q.includes('block') || q.includes('depend') || q.includes('dag') ||
       q.includes('downstream') || q.includes('atke ache') || q.includes('predecessor') ||
       q.includes('ডাউনস্ট্রিম') || q.includes('ব্লক')
     ) {
@@ -1602,33 +1602,33 @@ class BrowserEngine {
         projectId: b.projId
       }));
 
-      const tableRows = blockingComps.slice(0, 6).map(b => 
+      const tableRows = blockingComps.slice(0, 6).map(b =>
         `| \`${b.compId}\` | **${b.projId}** | ${b.projName.substring(0, 28)}... | ${b.compDone}% | **${b.blockedCount}** |`
       ).join('\n');
 
       const analysis = isBangla
         ? `### ⛓️ ডিএজি (DAG) ডিপেন্ডেন্সি ও ডাউনস্ট্রিম ব্লকার অডিট\n\n` +
-          `**${this.components.length} টি উপ-উপাদানের** উপর ডিরেক্টেড অ্যাসাইক্লিক গ্রাফ (DAG) বিশ্লেষণ:\n\n` +
-          `| Blocking Component | Project ID | Project Name | Progress | Downstream Blocked |\n` +
-          `| :--- | :--- | :--- | :--- | :--- |\n` +
-          (tableRows || `| \`comp001\` | proj001 | Municipal Infrastructure | 50% | 3 |`) + `\n\n` +
-          `#### 🔍 ক্রিটিক্যাল পাথ ফলাফল:\n` +
-          `- **প্রধান ব্লকার উপাদান:** উপ-উপাদান \`${topBlocker.compId}\` এর কাজ শেষ না হওয়ায় **${topBlocker.blockedCount} টি পরবর্তী কাজ** আটকে রয়েছে।\n` +
-          `- **সিডিউল ক্যাসকেড:** এই উপাদানের প্রতি ১ দিনের বিলম্ব পরবর্তী সকল কাজে ১ দিনের সরাসরি বিলম্ব ঘটাচ্ছে।\n\n` +
-          `#### 🎯 সুপারিশসমূহ:\n` +
-          `1. \`${topBlocker.compId}\` এর সাইটে জরুরি মাল্টি-শিফট জনবল মোতায়েন।\n` +
-          `2. নন-স্ট্রাকচারাল কাজের জন্য আংশিক ডিকাপলিং (Partial Decoupling) অনুমোদন।`
+        `**${this.components.length} টি উপ-উপাদানের** উপর ডিরেক্টেড অ্যাসাইক্লিক গ্রাফ (DAG) বিশ্লেষণ:\n\n` +
+        `| Blocking Component | Project ID | Project Name | Progress | Downstream Blocked |\n` +
+        `| :--- | :--- | :--- | :--- | :--- |\n` +
+        (tableRows || `| \`comp001\` | proj001 | Municipal Infrastructure | 50% | 3 |`) + `\n\n` +
+        `#### 🔍 ক্রিটিক্যাল পাথ ফলাফল:\n` +
+        `- **প্রধান ব্লকার উপাদান:** উপ-উপাদান \`${topBlocker.compId}\` এর কাজ শেষ না হওয়ায় **${topBlocker.blockedCount} টি পরবর্তী কাজ** আটকে রয়েছে।\n` +
+        `- **সিডিউল ক্যাসকেড:** এই উপাদানের প্রতি ১ দিনের বিলম্ব পরবর্তী সকল কাজে ১ দিনের সরাসরি বিলম্ব ঘটাচ্ছে।\n\n` +
+        `#### 🎯 সুপারিশসমূহ:\n` +
+        `1. \`${topBlocker.compId}\` এর সাইটে জরুরি মাল্টি-শিফট জনবল মোতায়েন।\n` +
+        `2. নন-স্ট্রাকচারাল কাজের জন্য আংশিক ডিকাপলিং (Partial Decoupling) অনুমোদন।`
         : `### ⛓️ Component Precedence & DAG Dependency Blocker Audit\n\n` +
-          `Directed Acyclic Graph (DAG) inspection across **${this.components.length} sub-components**:\n\n` +
-          `| Blocking Component | Project ID | Project Name | Progress | Downstream Blocked |\n` +
-          `| :--- | :--- | :--- | :--- | :--- |\n` +
-          (tableRows || `| \`comp001\` | proj001 | Municipal Infrastructure | 50% | 3 |`) + `\n\n` +
-          `#### Critical Path Diagnostics:\n` +
-          `- **Primary Bottleneck:** Component \`${topBlocker.compId}\` directly halts **${topBlocker.blockedCount} successive components**.\n` +
-          `- **RCPSP Cascade:** Any 1-day delay on \`${topBlocker.compId}\` forces an equivalent 1-day delay on all child tasks.\n\n` +
-          `#### Recommended Mitigations:\n` +
-          `1. Expedite site material delivery for \`${topBlocker.compId}\`.\n` +
-          `2. Enable parallel construction tracks for independent auxiliary items.`;
+        `Directed Acyclic Graph (DAG) inspection across **${this.components.length} sub-components**:\n\n` +
+        `| Blocking Component | Project ID | Project Name | Progress | Downstream Blocked |\n` +
+        `| :--- | :--- | :--- | :--- | :--- |\n` +
+        (tableRows || `| \`comp001\` | proj001 | Municipal Infrastructure | 50% | 3 |`) + `\n\n` +
+        `#### Critical Path Diagnostics:\n` +
+        `- **Primary Bottleneck:** Component \`${topBlocker.compId}\` directly halts **${topBlocker.blockedCount} successive components**.\n` +
+        `- **RCPSP Cascade:** Any 1-day delay on \`${topBlocker.compId}\` forces an equivalent 1-day delay on all child tasks.\n\n` +
+        `#### Recommended Mitigations:\n` +
+        `1. Expedite site material delivery for \`${topBlocker.compId}\`.\n` +
+        `2. Enable parallel construction tracks for independent auxiliary items.`;
 
       return {
         analysis,
@@ -1689,21 +1689,21 @@ class BrowserEngine {
 
       const analysis = isBangla
         ? `### 💬 নাগরিক মতামত ও জনসচেতনতা সিন্থেসিস (Citizen Sentiment Analysis)\n\n` +
-          `পৌরসভার সক্রিয় প্রকল্পসমূহের উপর প্রাপ্ত নাগরিক মতামত মূল্যায়ন করা হয়েছে:\n\n` +
-          `- **গড় নাগরিক সন্তুষ্টি:** **৭৮.৪% ইতিবাচক রেটিং**\n` +
-          `- **প্রধান উদ্বেগের ক্ষেত্র:** রাস্তার অতিরিক্ত ধুলোবালি ও বর্ষায় ড্রেনেজ উপচে পড়ার আশঙ্কা\n` +
-          `- **সবচেয়ে বেশি আলোচিত এলাকা:** তারাভো ও কাঞ্চন করিডোর\n\n` +
-          `#### 🎯 গৃহীতব্য ব্যবস্থা:\n` +
-          `1. দিনের ব্যস্ত সময়ে শুকনো সাইটে নিয়মিত পানি ছিটানো বাধ্যতামূলক করা।\n` +
-          `2. ট্রাফিক ডাইভারশনের ক্ষেত্রে কমপক্ষে ২৪ ঘণ্টা পূর্বে স্থানীয় মাইকিং ও ডিজিটাল সাইনবোর্ড স্থাপন।`
+        `পৌরসভার সক্রিয় প্রকল্পসমূহের উপর প্রাপ্ত নাগরিক মতামত মূল্যায়ন করা হয়েছে:\n\n` +
+        `- **গড় নাগরিক সন্তুষ্টি:** **৭৮.৪% ইতিবাচক রেটিং**\n` +
+        `- **প্রধান উদ্বেগের ক্ষেত্র:** রাস্তার অতিরিক্ত ধুলোবালি ও বর্ষায় ড্রেনেজ উপচে পড়ার আশঙ্কা\n` +
+        `- **সবচেয়ে বেশি আলোচিত এলাকা:** তারাভো ও কাঞ্চন করিডোর\n\n` +
+        `#### 🎯 গৃহীতব্য ব্যবস্থা:\n` +
+        `1. দিনের ব্যস্ত সময়ে শুকনো সাইটে নিয়মিত পানি ছিটানো বাধ্যতামূলক করা।\n` +
+        `2. ট্রাফিক ডাইভারশনের ক্ষেত্রে কমপক্ষে ২৪ ঘণ্টা পূর্বে স্থানীয় মাইকিং ও ডিজিটাল সাইনবোর্ড স্থাপন।`
         : `### 💬 Citizen Sentiment & Public Satisfaction Synthesis\n\n` +
-          `Synthesized citizen feedback submissions across active municipal corridors:\n\n` +
-          `- **Overall Public Satisfaction:** **78.4% Positive Index**\n` +
-          `- **Primary Public Friction:** Construction dust during dry season and uncoordinated utility trenching\n` +
-          `- **Key Areas of Civic Concern:** Tarabo arterial road and Kanchan bypass\n\n` +
-          `#### Strategic Community Actions:\n` +
-          `1. Enforce twice-daily dust-suppression water misting on all active road excavation packages.\n` +
-          `2. Implement a 48-hour digital notice protocol for scheduled road closures.`;
+        `Synthesized citizen feedback submissions across active municipal corridors:\n\n` +
+        `- **Overall Public Satisfaction:** **78.4% Positive Index**\n` +
+        `- **Primary Public Friction:** Construction dust during dry season and uncoordinated utility trenching\n` +
+        `- **Key Areas of Civic Concern:** Tarabo arterial road and Kanchan bypass\n\n` +
+        `#### Strategic Community Actions:\n` +
+        `1. Enforce twice-daily dust-suppression water misting on all active road excavation packages.\n` +
+        `2. Implement a 48-hour digital notice protocol for scheduled road closures.`;
 
       return {
         analysis,
@@ -1813,7 +1813,7 @@ class BrowserEngine {
   public getAlgorithmBenchmark(): AlgorithmBenchmark {
     const minStart = this.projects.reduce((min, p) => p.start_date < min ? p.start_date : min, '2026-01-01');
     const maxEnd = this.projects.reduce((max, p) => (p.projected_end_date || p.planned_end_date || '') > max ? (p.projected_end_date || p.planned_end_date || '') : max, '2028-12-31');
-    
+
     const startMs = new Date(minStart).getTime();
     const endMs = new Date(maxEnd).getTime();
     const rcpspDays = Math.max(365, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)));

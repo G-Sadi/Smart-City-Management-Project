@@ -2,7 +2,7 @@ import {
   Project, ProjectDetail, Proposal, ComponentItem, Agency,
   ConstraintItem, IngestionAudit, AnalyticsOverview,
   PlannedVsProjectedSeries, LocationDistribution,
-  AIAdvisorResponse, TimeframeSuggestion, User,
+  AIAdvisorResponse, AIStatusResponse, TimeframeSuggestion, User,
   AlgorithmBenchmark, DependencyDAGData, DBStatus
 } from './types';
 import { browserEngine } from './browserEngine';
@@ -443,18 +443,41 @@ export const api = {
   },
 
   // AI Advisor
-  getAIAdvice: async (query_type: string, project_id?: string, proposal_id?: string, user_prompt?: string): Promise<AIAdvisorResponse> => {
+  getAIStatus: async (): Promise<AIStatusResponse> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<AIStatusResponse>('/ai/status');
+      } catch (err) {
+        console.warn('Backend getAIStatus failed, falling back to embedded status', err);
+      }
+    }
+    return {
+      connected: false,
+      provider: 'browser_engine',
+      model: 'gemini-2.5-flash',
+      latency_ms: 0,
+      projects_indexed: browserEngine.getProjects().length || 135
+    };
+  },
+
+  getAIAdvice: async (
+    query_type: string,
+    project_id?: string,
+    proposal_id?: string,
+    user_prompt?: string,
+    mode: 'instant' | 'deep' = 'instant'
+  ): Promise<AIAdvisorResponse> => {
     if (await checkBackendHealth()) {
       try {
         return await request<AIAdvisorResponse>('/ai-advisor', {
           method: 'POST',
-          body: JSON.stringify({ query_type, project_id, proposal_id, user_prompt }),
+          body: JSON.stringify({ query_type, project_id, proposal_id, user_prompt, mode }),
         });
       } catch (err) {
         console.warn('Backend AI advisor failed, falling back to browser intelligence engine', err);
       }
     }
-    return browserEngine.getAIAdvice(query_type, project_id, proposal_id, user_prompt);
+    return browserEngine.getAIAdvice(query_type, project_id, proposal_id, user_prompt, mode);
   },
 
   simulateWhatIf: async (query: string) => {

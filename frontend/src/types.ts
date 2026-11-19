@@ -287,6 +287,14 @@ export interface ChatMessage {
   source?: string;
 }
 
+export interface AIStatusResponse {
+  connected: boolean;
+  provider: string;
+  model: string;
+  latency_ms: number;
+  projects_indexed: number;
+}
+
 export interface AIAdvisorResponse {
   analysis: string;
   bottlenecks: string[];
