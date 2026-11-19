@@ -21,7 +21,6 @@ export const MapView: React.FC<MapViewProps> = ({
   const { isDark } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
   const [search, setSearch] = useState('');
@@ -75,16 +74,12 @@ export const MapView: React.FC<MapViewProps> = ({
         zoomControl: true,
       });
 
-      const initialTileUrl = isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-      const tileLayer = L.tileLayer(initialTileUrl, {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; CARTO',
+      // Free, API-key-free OpenStreetMap raster tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(map);
 
-      tileLayerRef.current = tileLayer;
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
     }
@@ -94,19 +89,9 @@ export const MapView: React.FC<MapViewProps> = ({
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
-        tileLayerRef.current = null;
       }
     };
   }, []);
-
-  // Dynamically update tile layer when theme changes
-  useEffect(() => {
-    if (!mapInstanceRef.current || !tileLayerRef.current) return;
-    const newTileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    tileLayerRef.current.setUrl(newTileUrl);
-  }, [isDark]);
 
   // Update Markers when filteredProjects change
   useEffect(() => {

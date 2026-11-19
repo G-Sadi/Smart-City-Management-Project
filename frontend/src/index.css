@@ -86,7 +86,21 @@ html.light {
   color: #38bdf8;
 }
 
-/* Dark mode map tile styling when using OSM fallback */
-.dark .dark-leaflet-tiles .leaflet-tile {
-  filter: brightness(0.65) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3);
+/* Zero-API Dark Mode Map: Inverts only raster street tiles while preserving marker & popup colors */
+.leaflet-tile-pane {
+  transition: filter 0.3s ease-in-out;
+}
+
+html.dark .leaflet-tile-pane,
+.dark .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%) saturate(85%);
+}
+
+.dark .leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.85) !important;
+  color: #94a3b8 !important;
+}
+
+.dark .leaflet-control-attribution a {
+  color: #38bdf8 !important;
 }

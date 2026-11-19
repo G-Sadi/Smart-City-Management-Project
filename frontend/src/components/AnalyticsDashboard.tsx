@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ComposedChart 
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ComposedChart
 } from 'recharts';
-import { 
-  TrendingUp, DollarSign, Calendar, Clock, CheckCircle2, 
-  AlertTriangle, Download, RefreshCw, Layers, MapPin, Building2 
+import {
+  TrendingUp, DollarSign, Calendar, Clock, CheckCircle2,
+  AlertTriangle, Download, RefreshCw, Layers, MapPin, Building2
 } from 'lucide-react';
 import { AnalyticsOverview, PlannedVsProjectedSeries, LocationDistribution, Agency } from '../types';
 import { api } from '../api';
