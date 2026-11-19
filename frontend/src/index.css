@@ -104,3 +104,28 @@ html.dark .leaflet-tile-pane,
 .dark .leaflet-control-attribution a {
   color: #38bdf8 !important;
 }
+
+/* Print / Executive PDF Styling */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  header, nav, footer, .no-print, button, .leaflet-control-zoom {
+    display: none !important;
+  }
+  .print-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .bg-white, .dark\:bg-slate-900, .dark\:bg-slate-800 {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+  .text-white, .dark\:text-white {
+    color: #0f172a !important;
+  }
+}

@@ -9,6 +9,8 @@ import { AdminAuditConsole } from './components/AdminAuditConsole';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AIAdvisorPanel } from './components/AIAdvisorPanel';
 import { QuickLoginModal } from './components/QuickLoginModal';
+import { ExecutiveKpiRibbon } from './components/ExecutiveKpiRibbon';
+import { CommandPalette } from './components/CommandPalette';
 import { Project, Agency, AnalyticsOverview, User } from './types';
 import { api, subscribeBackendStatus, checkBackendHealth } from './api';
 import { useTheme } from './context/ThemeContext';
@@ -25,8 +27,21 @@ export function App() {
 
   // Modals & UI states
   const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+
+  // Global Ctrl+K / Cmd+K listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load User from LocalStorage or fetch current user
   useEffect(() => {
@@ -98,6 +113,7 @@ export function App() {
         setActiveTab={setActiveTab}
         user={user}
         onOpenQuickLogin={() => setIsQuickLoginOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onSyncRecalculate={handleSyncRecalculate}
         isSyncing={isSyncing}
         syncSuccess={syncSuccess}
@@ -106,6 +122,11 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Executive Real-Time KPI Ribbon */}
+        <ExecutiveKpiRibbon 
+          overview={overview} 
+          projects={projects} 
+        />
         {activeTab === 'map' && (
           <MapView
             projects={projects}
@@ -177,6 +198,21 @@ export function App() {
           else if (u.role === 'EXEC') setActiveTab('progress');
           else if (u.role === 'SYSADMIN') setActiveTab('admin');
         }}
+      />
+
+      {/* Global Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        projects={projects}
+        agencies={agencies}
+        onSelectProject={(id) => {
+          setSelectedProjectId(id);
+          setActiveTab('map');
+        }}
+        onSelectLocation={() => setActiveTab('map')}
+        onSelectAgency={() => setActiveTab('progress')}
+        onNavigateTab={(tab) => setActiveTab(tab)}
       />
 
       {/* Footer */}
