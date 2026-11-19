@@ -951,5 +951,6 @@ from fastapi.staticfiles import StaticFiles
 
 frontend_dist = os.path.join(PROJECT_ROOT, "frontend", "dist")
 if os.path.exists(frontend_dist):
+    app.mount("/Smart-City-Management-Project", StaticFiles(directory=frontend_dist, html=True), name="frontend_subpath")
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
     logger.info(f"Mounted production frontend from: {frontend_dist}")

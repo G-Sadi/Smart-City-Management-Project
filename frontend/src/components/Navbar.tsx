@@ -15,6 +15,7 @@ interface NavbarProps {
   onSyncRecalculate: () => void;
   isSyncing: boolean;
   syncSuccess: boolean;
+  isBackendConnected?: boolean | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,7 +27,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   setDarkMode,
   onSyncRecalculate,
   isSyncing,
-  syncSuccess
+  syncSuccess,
+  isBackendConnected
 }) => {
   const tabs = [
     { id: 'map', label: 'Civic GIS Map', icon: MapPin },
@@ -70,14 +72,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Toolbar */}
           <div className="flex items-center space-x-3">
-            {/* Live Watcher Indicator */}
-            <div className="hidden md:flex items-center space-x-2 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="font-medium">Live DB Watcher</span>
-            </div>
+            {/* Live Engine Status Badge */}
+            {isBackendConnected ? (
+              <div className="hidden sm:flex items-center space-x-2 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-medium">Connected to FastAPI Backend</span>
+              </div>
+            ) : (
+              <div className="hidden sm:flex items-center space-x-2 px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-xs text-teal-700 dark:text-teal-300">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+                </span>
+                <span className="font-medium">Live Demo Mode (Browser Engine)</span>
+              </div>
+            )}
 
             {/* Manual Sync & Recalculate Button */}
             <button

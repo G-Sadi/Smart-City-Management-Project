@@ -10,7 +10,7 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AIAdvisorPanel } from './components/AIAdvisorPanel';
 import { QuickLoginModal } from './components/QuickLoginModal';
 import { Project, Agency, AnalyticsOverview, User } from './types';
-import { api } from './api';
+import { api, subscribeBackendStatus, checkBackendHealth } from './api';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<string>('map');
@@ -19,6 +19,7 @@ export function App() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
 
   // Modals & UI states
   const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
@@ -55,6 +56,15 @@ export function App() {
         if (u && u.username !== 'guest') setUser(u);
       })
       .catch(() => {});
+  }, []);
+
+  // Check backend health & subscribe to connection status
+  useEffect(() => {
+    const unsub = subscribeBackendStatus(status => {
+      setIsBackendConnected(status);
+    });
+    checkBackendHealth();
+    return () => unsub();
   }, []);
 
   // Main Data Loader
@@ -106,6 +116,7 @@ export function App() {
         onSyncRecalculate={handleSyncRecalculate}
         isSyncing={isSyncing}
         syncSuccess={syncSuccess}
+        isBackendConnected={isBackendConnected}
       />
 
       {/* Main Content Area */}
