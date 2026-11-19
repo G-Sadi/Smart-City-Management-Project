@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { AnalyticsOverview, PlannedVsProjectedSeries, LocationDistribution, Agency } from '../types';
 import { api } from '../api';
+import { useTheme } from '../context/ThemeContext';
 
 interface AnalyticsDashboardProps {
   overview: AnalyticsOverview | null;
@@ -21,6 +22,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   agencies,
   onRefresh
 }) => {
+  const { isDark } = useTheme();
   const [timelineSeries, setTimelineSeries] = useState<PlannedVsProjectedSeries[]>([]);
   const [locationDist, setLocationDist] = useState<LocationDistribution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,20 +212,28 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={timelineSeries} margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} unit=" Cr" />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={isDark ? 0.4 : 0.8} />
+                <XAxis dataKey="year" tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} stroke={isDark ? '#475569' : '#cbd5e1'} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} stroke={isDark ? '#475569' : '#cbd5e1'} unit=" Cr" />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} stroke={isDark ? '#475569' : '#cbd5e1'} />
                 <Tooltip
                   formatter={(val: any, name: any) => [
                     `${val} ${name === 'Active Projects' ? 'Projects' : 'Cr Tk'}`,
                     name
                   ]}
-                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', fontSize: '12px', borderRadius: '8px' }}
+                  contentStyle={{
+                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    color: isDark ? '#f8fafc' : '#0f172a',
+                    fontSize: '12px',
+                    borderRadius: '8px',
+                    boxShadow: isDark ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)'
+                  }}
+                  itemStyle={{ color: isDark ? '#f8fafc' : '#0f172a' }}
                 />
-                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Bar yAxisId="left" dataKey="planned_budget" name="Planned Budget" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.8} />
-                <Bar yAxisId="left" dataKey="projected_budget" name="Projected Budget" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.8} />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px', color: isDark ? '#cbd5e1' : '#475569' }} />
+                <Bar yAxisId="left" dataKey="planned_budget" name="Planned Budget" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.85} />
+                <Bar yAxisId="left" dataKey="projected_budget" name="Projected Budget" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.85} />
                 <Line yAxisId="left" type="monotone" dataKey="actual_spent" name="Actual Spent" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
                 <Line yAxisId="right" type="monotone" dataKey="active_projects" name="Active Projects" stroke="#06b6d4" strokeWidth={2} strokeDasharray="4 4" />
               </ComposedChart>
@@ -243,14 +253,22 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={locationDist.slice(0, 7)} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis type="number" tick={{ fontSize: 10 }} />
-                <YAxis dataKey="location" type="category" tick={{ fontSize: 10 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={isDark ? 0.4 : 0.8} />
+                <XAxis type="number" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} stroke={isDark ? '#475569' : '#cbd5e1'} />
+                <YAxis dataKey="location" type="category" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} stroke={isDark ? '#475569' : '#cbd5e1'} />
                 <Tooltip
                   formatter={(val: any, name: any) => [`${val} Projects`, name]}
-                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', fontSize: '11px', borderRadius: '8px' }}
+                  contentStyle={{
+                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    color: isDark ? '#f8fafc' : '#0f172a',
+                    fontSize: '11px',
+                    borderRadius: '8px',
+                    boxShadow: isDark ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)'
+                  }}
+                  itemStyle={{ color: isDark ? '#f8fafc' : '#0f172a' }}
                 />
-                <Legend wrapperStyle={{ fontSize: '10px' }} />
+                <Legend wrapperStyle={{ fontSize: '10px', color: isDark ? '#cbd5e1' : '#475569' }} />
                 <Bar dataKey="project_count" name="Active Projects" fill="#10b981" radius={[0, 4, 4, 0]} />
                 <Bar dataKey="limit" name="Max Concurrency Limit" fill="#f43f5e" radius={[0, 4, 4, 0]} />
               </BarChart>

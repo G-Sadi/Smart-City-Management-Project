@@ -4,14 +4,15 @@ import {
   ShieldCheck, RefreshCw, Sun, Moon, Sparkles, UserCheck, CheckCircle2
 } from 'lucide-react';
 import { User } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   user: User | null;
   onOpenQuickLogin: () => void;
-  darkMode: boolean;
-  setDarkMode: (val: boolean) => void;
+  darkMode?: boolean;
+  setDarkMode?: (val: boolean) => void;
   onSyncRecalculate: () => void;
   isSyncing: boolean;
   syncSuccess: boolean;
@@ -23,13 +24,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   user,
   onOpenQuickLogin,
-  darkMode,
-  setDarkMode,
   onSyncRecalculate,
   isSyncing,
   syncSuccess,
   isBackendConnected
 }) => {
+  const { isDark, toggleTheme } = useTheme();
   const tabs = [
     { id: 'map', label: 'Civic GIS Map', icon: MapPin },
     { id: 'analytics', label: 'Analytics & Gantt', icon: BarChart3 },
@@ -107,11 +107,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Dark / Light Toggle */}
             <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-              title="Toggle Theme"
+              onClick={toggleTheme}
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700/60 shadow-xs cursor-pointer"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+              {isDark ? (
+                <Sun className="w-4 h-4 text-amber-400 transition-transform hover:rotate-45" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-700 transition-transform hover:-rotate-12" />
+              )}
             </button>
 
             {/* User / Quick Login Button */}

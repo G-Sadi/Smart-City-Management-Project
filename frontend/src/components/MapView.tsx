@@ -5,6 +5,7 @@ import {
   ArrowUpRight, AlertCircle, CheckCircle2, PlayCircle 
 } from 'lucide-react';
 import { Project } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface MapViewProps {
   projects: Project[];
@@ -17,8 +18,10 @@ export const MapView: React.FC<MapViewProps> = ({
   onSelectProject,
   selectedProjectId
 }) => {
+  const { isDark } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
   const [search, setSearch] = useState('');
@@ -72,11 +75,16 @@ export const MapView: React.FC<MapViewProps> = ({
         zoomControl: true,
       });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      const initialTileUrl = isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+      const tileLayer = L.tileLayer(initialTileUrl, {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; CARTO',
         maxZoom: 19,
       }).addTo(map);
 
+      tileLayerRef.current = tileLayer;
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
     }
@@ -86,9 +94,19 @@ export const MapView: React.FC<MapViewProps> = ({
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        tileLayerRef.current = null;
       }
     };
   }, []);
+
+  // Dynamically update tile layer when theme changes
+  useEffect(() => {
+    if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    const newTileUrl = isDark
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    tileLayerRef.current.setUrl(newTileUrl);
+  }, [isDark]);
 
   // Update Markers when filteredProjects change
   useEffect(() => {
@@ -133,22 +151,22 @@ export const MapView: React.FC<MapViewProps> = ({
       const marker = L.marker([proj.latitude, proj.longitude], { icon: customIcon });
 
       const popupContent = `
-        <div style="font-family: sans-serif; font-size: 12px; max-width: 240px; padding: 2px;">
+        <div style="font-family: inherit; font-size: 12px; max-width: 240px; padding: 2px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-            <span style="background: ${color}20; color: ${color}; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+            <span style="background: ${color}25; color: ${color}; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
               ${proj.status}
             </span>
-            <span style="color: #64748b; font-size: 10px;">${proj.project_id}</span>
+            <span style="color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 10px;">${proj.project_id}</span>
           </div>
-          <h4 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 600; color: #1e293b;">${proj.name}</h4>
-          <p style="margin: 0 0 6px 0; color: #64748b; font-size: 11px;">📍 ${proj.location} • 🏛️ ${proj.exec}</p>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 600; color: ${isDark ? '#f8fafc' : '#1e293b'};">${proj.name}</h4>
+          <p style="margin: 0 0 6px 0; color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 11px;">📍 ${proj.location} • 🏛️ ${proj.exec}</p>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; color: ${isDark ? '#e2e8f0' : '#334155'};">
             <span><strong>Cost:</strong> ${proj.cost} Cr Tk</span>
             <span><strong>Progress:</strong> ${proj.completion}%</span>
           </div>
           <button id="view-proj-btn-${proj.project_id}" style="
             width: 100%;
-            padding: 5px;
+            padding: 6px 10px;
             background: #10b981;
             color: white;
             border: none;
@@ -184,7 +202,7 @@ export const MapView: React.FC<MapViewProps> = ({
         maxZoom: 13,
       });
     }
-  }, [filteredProjects, selectedProjectId]);
+  }, [filteredProjects, selectedProjectId, isDark]);
 
   // Center on selected project if available
   useEffect(() => {

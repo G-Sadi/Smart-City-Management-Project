@@ -11,8 +11,10 @@ import { AIAdvisorPanel } from './components/AIAdvisorPanel';
 import { QuickLoginModal } from './components/QuickLoginModal';
 import { Project, Agency, AnalyticsOverview, User } from './types';
 import { api, subscribeBackendStatus, checkBackendHealth } from './api';
+import { useTheme } from './context/ThemeContext';
 
 export function App() {
+  const { isDark, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<string>('map');
   const [projects, setProjects] = useState<Project[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -23,25 +25,8 @@ export function App() {
 
   // Modals & UI states
   const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
-    return (localStorage.getItem('civicgrid_theme') || localStorage.getItem('samurai_theme')) === 'dark' ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
-
-  // Sync dark mode class with html element
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('civicgrid_theme', 'dark');
-      localStorage.setItem('samurai_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('civicgrid_theme', 'light');
-      localStorage.setItem('samurai_theme', 'light');
-    }
-  }, [darkMode]);
 
   // Load User from LocalStorage or fetch current user
   useEffect(() => {
@@ -106,15 +91,13 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
       {/* Sticky Navigation Bar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         user={user}
         onOpenQuickLogin={() => setIsQuickLoginOpen(true)}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
         onSyncRecalculate={handleSyncRecalculate}
         isSyncing={isSyncing}
         syncSuccess={syncSuccess}
