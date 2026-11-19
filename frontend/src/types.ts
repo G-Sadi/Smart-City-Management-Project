@@ -100,6 +100,16 @@ export interface ConstraintItem {
   description?: string;
 }
 
+export interface SanitizationAuditItem {
+  file: string;
+  row: number;
+  record_id: string;
+  violation_type: string;
+  action_taken: string;
+  reason: string;
+  data?: any;
+}
+
 export interface IngestionAudit {
   id: number;
   timestamp: string;
@@ -108,7 +118,74 @@ export interface IngestionAudit {
   total_rows_loaded: number;
   total_bad_rows: number;
   summary: Record<string, { read: number; loaded: number; bad: number }>;
-  bad_rows: Array<{ file: string; row: number; reason: string; data?: any }>;
+  bad_rows: SanitizationAuditItem[];
+}
+
+export interface AlgorithmBenchmark {
+  makespan_saved_days: number;
+  makespan_saved_months: number;
+  makespan_reduction_pct: number;
+  idle_time_reduction_pct: number;
+  conflicts_resolved_count: number;
+  agency_conflicts_resolved: number;
+  location_conflicts_resolved: number;
+  blackout_conflicts_resolved: number;
+  budget_conflicts_resolved: number;
+  constraint_compliance_pct: number;
+  zero_violations_verified: boolean;
+  baseline_makespan_days: number;
+  optimized_makespan_days: number;
+  cpm_critical_path_length_days: number;
+}
+
+export interface DAGNode {
+  id: string;
+  project_id: string;
+  project_name: string;
+  agency: string;
+  comp_type: string;
+  completion_pct: number;
+  cost: number;
+  status: string;
+  is_critical: boolean;
+  downstream_count: number;
+}
+
+export interface DAGEdge {
+  from: string;
+  to: string;
+}
+
+export interface BottleneckRisk {
+  component_id: string;
+  project_id: string;
+  project_name: string;
+  agency: string;
+  completion_pct: number;
+  downstream_components_blocked: number;
+  downstream_budget_at_risk_cr_tk: number;
+  risk_score: number;
+  is_critical_path: boolean;
+}
+
+export interface DependencyDAGData {
+  is_dag: boolean;
+  cycles_detected: number;
+  cycles: string[][];
+  total_nodes: number;
+  total_edges: number;
+  critical_path_length: number;
+  nodes: DAGNode[];
+  edges: DAGEdge[];
+  top_bottlenecks: BottleneckRisk[];
+}
+
+export interface DBStatus {
+  status: string;
+  last_updated: string;
+  projects_count: number;
+  components_count: number;
+  db_engine: string;
 }
 
 export interface AnalyticsOverview {

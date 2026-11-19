@@ -11,9 +11,11 @@ import { AIAdvisorPanel } from './components/AIAdvisorPanel';
 import { QuickLoginModal } from './components/QuickLoginModal';
 import { ExecutiveKpiRibbon } from './components/ExecutiveKpiRibbon';
 import { CommandPalette } from './components/CommandPalette';
+import { JudgeStressTestDrawer } from './components/JudgeStressTestDrawer';
 import { Project, Agency, AnalyticsOverview, User } from './types';
-import { api, subscribeBackendStatus, checkBackendHealth } from './api';
+import { api, subscribeBackendStatus, checkBackendHealth, subscribeDBChanges } from './api';
 import { useTheme } from './context/ThemeContext';
+import { Sliders, CheckCircle2 } from 'lucide-react';
 
 export function App() {
   const { isDark, toggleTheme } = useTheme();
@@ -28,6 +30,8 @@ export function App() {
   // Modals & UI states
   const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isStressTestOpen, setIsStressTestOpen] = useState(false);
+  const [dbNotification, setDbNotification] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
 
@@ -41,6 +45,16 @@ export function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Subscribe to live DB mutations (polling or socket updates)
+  useEffect(() => {
+    const unsub = subscribeDBChanges(() => {
+      setDbNotification('Direct DB Change Detected — Schedules Recalculated');
+      loadCoreData();
+      setTimeout(() => setDbNotification(null), 4500);
+    });
+    return () => unsub();
   }, []);
 
   // Load User from LocalStorage or fetch current user
@@ -165,6 +179,7 @@ export function App() {
             user={user}
             projects={projects}
             onProgressUpdated={loadCoreData}
+            onOpenStressTest={() => setIsStressTestOpen(true)}
           />
         )}
 
@@ -172,6 +187,7 @@ export function App() {
           <AdminAuditConsole
             agencies={agencies}
             onRefreshNeeded={loadCoreData}
+            onOpenStressTest={() => setIsStressTestOpen(true)}
           />
         )}
 
@@ -214,6 +230,32 @@ export function App() {
         onSelectAgency={() => setActiveTab('progress')}
         onNavigateTab={(tab) => setActiveTab(tab)}
       />
+
+      {/* Judge Runtime Stress-Test Simulator Drawer (Section 4) */}
+      <JudgeStressTestDrawer
+        isOpen={isStressTestOpen}
+        onClose={() => setIsStressTestOpen(false)}
+        projects={projects}
+        onRecalculated={loadCoreData}
+      />
+
+      {/* Floating Judge Stress-Test Launcher Pill */}
+      <button
+        onClick={() => setIsStressTestOpen(true)}
+        className="fixed bottom-6 right-6 z-40 px-3.5 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xl flex items-center space-x-2 transition hover:scale-105 cursor-pointer no-print"
+        title="Open Judge Stress-Test Simulator (Section 4)"
+      >
+        <Sliders className="w-4 h-4" />
+        <span>Judge Simulator</span>
+      </button>
+
+      {/* Real-time DB Mutation Toast Notification */}
+      {dbNotification && (
+        <div className="fixed bottom-20 right-6 z-50 p-4 rounded-2xl bg-emerald-700 text-white shadow-2xl flex items-center space-x-3 text-xs font-bold border border-emerald-400/40 animate-in slide-in-from-bottom duration-300">
+          <CheckCircle2 className="w-5 h-5 text-amber-300" />
+          <span>{dbNotification}</span>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 text-center text-xs text-slate-500 dark:text-slate-400">

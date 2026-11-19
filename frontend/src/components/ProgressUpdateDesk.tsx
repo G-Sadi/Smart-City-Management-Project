@@ -10,12 +10,14 @@ interface ProgressUpdateDeskProps {
   user: User | null;
   projects: Project[];
   onProgressUpdated: () => void;
+  onOpenStressTest?: () => void;
 }
 
 export const ProgressUpdateDesk: React.FC<ProgressUpdateDeskProps> = ({
   user,
   projects,
-  onProgressUpdated
+  onProgressUpdated,
+  onOpenStressTest
 }) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
@@ -132,11 +134,23 @@ export const ProgressUpdateDesk: React.FC<ProgressUpdateDeskProps> = ({
     <div className="space-y-6">
       {/* Header Banner */}
       <div className="p-6 rounded-2xl bg-gradient-to-r from-teal-800 to-emerald-900 text-white shadow-lg space-y-2">
-        <div className="flex items-center space-x-2">
-          <span className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
-            <Sliders className="w-5 h-5 text-emerald-300" />
-          </span>
-          <h2 className="text-xl font-bold tracking-tight">Executing Agency Progress Desk & Dynamic Recalculator</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-2">
+            <span className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+              <Sliders className="w-5 h-5 text-emerald-300" />
+            </span>
+            <h2 className="text-xl font-bold tracking-tight">Executing Agency Progress Desk & Dynamic Recalculator</h2>
+          </div>
+
+          {onOpenStressTest && (
+            <button
+              onClick={onOpenStressTest}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition flex items-center space-x-2 shadow-sm cursor-pointer"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Judge Stress-Test Simulator</span>
+            </button>
+          )}
         </div>
         <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
           Submit monthly civil progress updates, expenditures, or component rollbacks. The system dynamically executes

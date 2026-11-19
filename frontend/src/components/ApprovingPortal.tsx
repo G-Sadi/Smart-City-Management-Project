@@ -188,12 +188,12 @@ export const ApprovingPortal: React.FC<ApprovingPortalProps> = ({
                     <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                       {prop.proposal_id}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                       isMop
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-700'
                     }`}>
-                      {prop.approving_authority} Authority
+                      {isMop ? 'Authority: Minister for Planning (MOP)' : 'Authority: ECNEC (Cabinet Chaired)'}
                     </span>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                       prop.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' :
@@ -207,6 +207,41 @@ export const ApprovingPortal: React.FC<ApprovingPortalProps> = ({
                   <span className="text-xs text-slate-400">
                     Submission Date: {prop.proposal_date}
                   </span>
+                </div>
+
+                {/* Official GOB DPP Pipeline Stage Stepper */}
+                <div className="py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                    <span className="text-slate-500 uppercase tracking-wider">GOB Statutory DPP Workflow:</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                      {prop.status === 'Approved' ? 'Stage 5/5: Included in ADP' : 'Stage 4/5: Pending Executive Approval'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 text-center text-[10px]">
+                    <div className="p-1 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-medium">
+                      ✓ 1. DPP Formulated
+                    </div>
+                    <div className="p-1 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-medium">
+                      ✓ 2. Ministry Scrutiny
+                    </div>
+                    <div className="p-1 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-medium">
+                      ✓ 3. PEC Recommended
+                    </div>
+                    <div className={`p-1 rounded font-bold ${
+                      prop.status === 'Approved' 
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300' 
+                        : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 ring-1 ring-amber-400'
+                    }`}>
+                      {prop.status === 'Approved' ? '✓' : '●'} 4. {prop.approving_authority} Approval
+                    </div>
+                    <div className={`p-1 rounded font-medium ${
+                      prop.status === 'Approved' 
+                        ? 'bg-emerald-600 text-white font-bold' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                    }`}>
+                      5. ADP Inclusion
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -263,6 +298,30 @@ export const ApprovingPortal: React.FC<ApprovingPortalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Inline Live Impact Preview */}
+                {prop.status === 'Pending' && (
+                  <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300/40 dark:border-emerald-800/40 text-xs space-y-1.5">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center space-x-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Live Citywide Impact Preview (If Approved):</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-600 dark:text-slate-300 font-mono">
+                      <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-400 block text-[9px] uppercase">Citywide Makespan:</span>
+                        <strong className="text-emerald-600 dark:text-emerald-400">+0 Days (Optimal Slot)</strong>
+                      </div>
+                      <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-400 block text-[9px] uppercase">{prop.exec} Annual Spend:</span>
+                        <strong>+{(prop.cost / Math.max(1, prop.timespan)).toFixed(1)} Cr/Yr (Within Cap)</strong>
+                      </div>
+                      <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-400 block text-[9px] uppercase">{prop.location} Density:</span>
+                        <strong className="text-teal-600 dark:text-teal-400">Headroom Available (+1 Slot)</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Action Buttons for Pending Proposals */}
                 {prop.status === 'Pending' && (

@@ -11,6 +11,7 @@ import {
 import { AnalyticsOverview, PlannedVsProjectedSeries, LocationDistribution, Agency, Project } from '../types';
 import { api } from '../api';
 import { useTheme } from '../context/ThemeContext';
+import { AlgorithmProofBanner } from './AlgorithmProofBanner';
 
 interface AnalyticsDashboardProps {
   overview: AnalyticsOverview | null;
@@ -153,6 +154,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
   return (
     <div className="space-y-6 print-container">
+      {/* Hackathon Judge Section 2 & 4: Algorithm Optimization Proof */}
+      <AlgorithmProofBanner />
+
       {/* Top Header & Export Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm no-print">
         <div>

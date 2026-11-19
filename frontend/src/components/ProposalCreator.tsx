@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, Calendar, DollarSign, Clock, MapPin, Building2, 
-  AlertCircle, CheckCircle2, ArrowRight, ShieldAlert, Cpu 
+  AlertCircle, CheckCircle2, ArrowRight, ShieldAlert, Cpu, GitFork, FileText 
 } from 'lucide-react';
 import { TimeframeSuggestion, Agency } from '../types';
 import { api } from '../api';
+import { AlgorithmProofBanner } from './AlgorithmProofBanner';
+import { DependencyRiskMatrix } from './DependencyRiskMatrix';
 
 interface ProposalCreatorProps {
   agencies: Agency[];
@@ -24,6 +26,9 @@ export const ProposalCreator: React.FC<ProposalCreatorProps> = ({
   const [timespan, setTimespan] = useState<number>(3);
   const [goal, setGoal] = useState('');
   const [dependencyId, setDependencyId] = useState('');
+
+  // Subtab State: DPP Formulator vs. Dependency DAG
+  const [activeSubTab, setActiveSubTab] = useState<'formulator' | 'dag'>('formulator');
 
   // RCPSP Suggestion State
   const [suggestion, setSuggestion] = useState<TimeframeSuggestion | null>(null);
@@ -95,23 +100,57 @@ export const ProposalCreator: React.FC<ProposalCreatorProps> = ({
   const authorityTag = cost <= 50.0 ? 'MOP (<= 50 Cr)' : 'ECNEC (> 50 Cr)';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-700 to-teal-800 text-white shadow-lg space-y-2">
-        <div className="flex items-center space-x-2">
-          <span className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
-            <Cpu className="w-5 h-5 text-emerald-300" />
-          </span>
-          <h2 className="text-xl font-bold tracking-tight">DPP Proposal Formulation & RCPSP Optimization Engine</h2>
-        </div>
-        <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
-          Draft a new Development Project Proforma (DPP). Before submitting for approval, run the deterministic
-          Resource-Constrained Project Scheduling (RCPSP) solver to pinpoint the earliest valid start date without
-          violating agency capacity limits, location saturation quotas, or yearly budget allocations.
-        </p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Subtab Navigation */}
+      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <button
+          onClick={() => setActiveSubTab('formulator')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+            activeSubTab === 'formulator'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>1. DPP Formulator & RCPSP Solver</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('dag')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+            activeSubTab === 'dag'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+          }`}
+        >
+          <GitFork className="w-3.5 h-3.5" />
+          <span>2. Dependency DAG & Risk Graph</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+      {activeSubTab === 'dag' ? (
+        <DependencyRiskMatrix />
+      ) : (
+        <>
+          {/* Section 2 & 4 Algorithm Benchmark Proof */}
+          <AlgorithmProofBanner />
+
+          {/* Header Banner */}
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-700 to-teal-800 text-white shadow-lg space-y-2">
+            <div className="flex items-center space-x-2">
+              <span className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+                <Cpu className="w-5 h-5 text-emerald-300" />
+              </span>
+              <h2 className="text-xl font-bold tracking-tight">DPP Proposal Formulation & RCPSP Optimization Engine</h2>
+            </div>
+            <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
+              Draft a new Development Project Proforma (DPP). Before submitting for approval, run the deterministic
+              Resource-Constrained Project Scheduling (RCPSP) solver to pinpoint the earliest valid start date without
+              violating agency capacity limits, location saturation quotas, or yearly budget allocations.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Form Column (7 cols) */}
         <div className="md:col-span-7 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
@@ -395,6 +434,8 @@ export const ProposalCreator: React.FC<ProposalCreatorProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

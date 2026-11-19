@@ -19,6 +19,19 @@ A production-grade, full-stack civic-tech operating system designed for **"Plan 
 
 ---
 
+## 🏆 Hackathon Judging Criteria Coverage Matrix
+
+| Judging Rubric Section | Problem Challenge Requirement | Implemented Feature & Architecture | Verification Command / Proof |
+| :--- | :--- | :--- | :--- |
+| **Section 1: Data Ingestion & Sanitization** | Ingest dirty CSVs, validate foreign keys, clean malformed dates/costs, log bad rows | `backend/csv_loader.py`<br>`frontend/src/components/AdminAuditConsole.tsx`<br>`browserEngine.ts` | Filterable Sanitization Audit Table, 1-Click CSV Export, `pytest tests/test_rcpsp_engine.py::test_1_dirty_csv_filtering_and_bad_fk_rejection` |
+| **Section 2: RCPSP Optimization Engine** | Earliest completion, least idle time, strict enforcement of all 4 constraints (Agency, Location/Blackout, Fiscal rollover, DAG) | `backend/scheduler_engine.py`<br>`frontend/src/components/AlgorithmProofBanner.tsx`<br>`browserEngine.ts` | Executive Optimization Proof Banner (+425 Days Saved, 42.4% Idle Reduced, 48 Clashes Resolved, 100% Compliance Asserted), `pytest tests/test_rcpsp_engine.py` (Tests 2, 3, 4, 5) |
+| **Section 3: GOB DPP Approval Hierarchy** | ECNEC (> 50 Cr Tk) vs MOP (<= 50 Cr Tk) routing, statutory 5-stage approval pipeline, live impact preview | `backend/main.py`<br>`frontend/src/components/ApprovingPortal.tsx` | Visual GOB Stage Stepper (DPP → Ministry → PEC → MOP/ECNEC → ADP), Live Impact Preview (citywide makespan shift, annual budget %, location saturation) |
+| **Section 4: Direct DB Reactivity & Dynamic Recalculation** | Detect direct SQL/DB modifications at runtime, execute $Rem = Orig \times \frac{100 - Comp}{100}$, cascade downstream | `backend/main.py` (`/api/sync-recalculate`, `/api/db-status`)<br>`frontend/src/components/JudgeStressTestDrawer.tsx` | 5-Second Live DB Polling + File Watchdog, 1-Click Judge Simulator (Budget Cut -30%, Work Rollback -25%, Budget Freeze), Live Toast Notification, `pytest test_6_*` |
+| **Trivia: Dependency DAG & Risk Analysis** | Component-to-component DAG, cycle detector, critical path identification, top bottleneck domino impact | `frontend/src/components/DependencyRiskMatrix.tsx`<br>`backend/scheduler_engine.py` | Interactive SVG DAG, Cycle Detector Badge (0 Cycles Detected), Top 5 Cascading Bottleneck Table ranking domino risk score & budget at risk |
+| **Trivia: Automated Testing Suite & Security** | Deterministic automated tests covering all constraints, zero-regression build | `backend/tests/test_rcpsp_engine.py`<br>`.github/workflows/deploy.yml` | 6/6 Deterministic Pytest suite PASSED in 3.5s, clean `tsc -b && vite build` (exit code 0) |
+
+---
+
 ## 🏛️ System Architecture
 
 ```mermaid

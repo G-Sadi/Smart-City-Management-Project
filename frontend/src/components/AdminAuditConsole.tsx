@@ -1,25 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, FileSpreadsheet, RefreshCw, AlertTriangle, 
-  CheckCircle2, Plus, Trash2, Database, Eye, Terminal, Clock 
+  CheckCircle2, Plus, Trash2, Database, Eye, Terminal, Clock, 
+  Download, Sliders, Filter, Search 
 } from 'lucide-react';
-import { IngestionAudit, ConstraintItem, Agency } from '../types';
+import { IngestionAudit, ConstraintItem, Agency, SanitizationAuditItem } from '../types';
 import { api } from '../api';
 
 interface AdminAuditConsoleProps {
   agencies: Agency[];
   onRefreshNeeded: () => void;
+  onOpenStressTest?: () => void;
 }
 
 export const AdminAuditConsole: React.FC<AdminAuditConsoleProps> = ({
   agencies,
-  onRefreshNeeded
+  onRefreshNeeded,
+  onOpenStressTest
 }) => {
   const [audits, setAudits] = useState<IngestionAudit[]>([]);
   const [constraints, setConstraints] = useState<ConstraintItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isReingesting, setIsReingesting] = useState(false);
   const [reingestMsg, setReingestMsg] = useState<string | null>(null);
+
+  // Bad rows filter state
+  const [badRowsFilterFile, setBadRowsFilterFile] = useState<string>('ALL');
+  const [badRowsSearch, setBadRowsSearch] = useState<string>('');
 
   // New constraint form state
   const [newCode, setNewCode] = useState('');
@@ -103,7 +110,7 @@ export const AdminAuditConsole: React.FC<AdminAuditConsoleProps> = ({
     <div className="space-y-6">
       {/* Header Banner */}
       <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-lg space-y-2 border border-slate-700">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span className="p-2 rounded-xl bg-purple-500/20 text-purple-300">
               <ShieldCheck className="w-5 h-5" />
@@ -111,14 +118,26 @@ export const AdminAuditConsole: React.FC<AdminAuditConsoleProps> = ({
             <h2 className="text-xl font-bold tracking-tight">System Administrator & Ingestion Audit Console</h2>
           </div>
 
-          <button
-            onClick={handleReingest}
-            disabled={isReingesting}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center space-x-2 shadow-sm disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isReingesting ? 'animate-spin' : ''}`} />
-            <span>{isReingesting ? 'Sanitizing & Ingesting...' : 'Re-ingest CSVs from /data'}</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {onOpenStressTest && (
+              <button
+                onClick={onOpenStressTest}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition flex items-center space-x-2 shadow-sm cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Judge Stress-Test Simulator</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleReingest}
+              disabled={isReingesting}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center space-x-2 shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isReingesting ? 'animate-spin' : ''}`} />
+              <span>{isReingesting ? 'Sanitizing & Ingesting...' : 'Re-ingest CSVs from /data'}</span>
+            </button>
+          </div>
         </div>
         <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
           Inspect automated CSV data sanitization reports, bad-row filters, foreign-key audits, and live constraint models.
@@ -209,19 +228,137 @@ export const AdminAuditConsole: React.FC<AdminAuditConsoleProps> = ({
               </table>
             </div>
 
-            {/* Bad Rows Log Detail (if any) */}
+            {/* Granular Data Sanitization & Rejected Rows Audit Table (Section 1 Maximizer) */}
             {latestAudit.bad_rows && latestAudit.bad_rows.length > 0 && (
-              <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 space-y-2">
-                <h4 className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center space-x-1.5">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>Filtered Bad Rows Log ({latestAudit.bad_rows.length})</span>
-                </h4>
-                <div className="max-h-40 overflow-y-auto space-y-1 text-[11px] font-mono">
-                  {latestAudit.bad_rows.map((bad, i) => (
-                    <div key={i} className="p-1.5 rounded bg-white/60 dark:bg-black/30 text-rose-700 dark:text-rose-300">
-                      [{bad.file}: Row {bad.row}] Reason: {bad.reason}
-                    </div>
-                  ))}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center space-x-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <span>Data Sanitization & Rejected Rows Audit Table</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Granular traceability of all malformed dates, negative budgets, and orphaned foreign-key violations
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => api.exportSanitizationAuditCsv()}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Download Sanitization Audit Report (CSV)</span>
+                  </button>
+                </div>
+
+                {/* Summary Pill Bar */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 text-center">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Parsed</span>
+                    <strong className="text-sm font-mono text-slate-800 dark:text-slate-100">{latestAudit.total_rows_read}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-300/40 text-center">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block uppercase font-bold">Clean Loaded</span>
+                    <strong className="text-sm font-mono text-emerald-600 dark:text-emerald-400">{latestAudit.total_rows_loaded}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-300/40 text-center">
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 block uppercase font-bold">Bad Rows Filtered</span>
+                    <strong className="text-sm font-mono text-amber-600 dark:text-amber-400">{latestAudit.total_bad_rows}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-300/40 text-center">
+                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block uppercase font-bold">Integrity Score</span>
+                    <strong className="text-sm font-mono text-indigo-600 dark:text-indigo-400">
+                      {latestAudit.total_rows_read > 0 ? ((latestAudit.total_rows_loaded / latestAudit.total_rows_read) * 100).toFixed(1) : '100.0'}%
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] text-slate-400 font-semibold uppercase">Source File:</span>
+                    <select
+                      value={badRowsFilterFile}
+                      onChange={(e) => setBadRowsFilterFile(e.target.value)}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                    >
+                      <option value="ALL">All Files ({latestAudit.bad_rows.length})</option>
+                      {Array.from(new Set(latestAudit.bad_rows.map(b => b.file))).map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search record ID or reason..."
+                      value={badRowsSearch}
+                      onChange={(e) => setBadRowsSearch(e.target.value)}
+                      className="text-xs pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-56"
+                    />
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-3">Source File</th>
+                        <th className="py-2.5 px-3">Row #</th>
+                        <th className="py-2.5 px-3">Record ID / Snippet</th>
+                        <th className="py-2.5 px-3">Violation Type</th>
+                        <th className="py-2.5 px-3">Action Taken</th>
+                        <th className="py-2.5 px-3">Sanitization Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+                      {latestAudit.bad_rows
+                        .filter(b => {
+                          if (badRowsFilterFile !== 'ALL' && b.file !== badRowsFilterFile) return false;
+                          if (badRowsSearch) {
+                            const q = badRowsSearch.toLowerCase();
+                            const matchId = (b.record_id || '').toLowerCase().includes(q);
+                            const matchReason = (b.reason || '').toLowerCase().includes(q);
+                            const matchType = (b.violation_type || '').toLowerCase().includes(q);
+                            if (!matchId && !matchReason && !matchType) return false;
+                          }
+                          return true;
+                        })
+                        .map((bad, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                              {bad.file}
+                            </td>
+                            <td className="py-2 px-3 text-slate-500 font-bold">
+                              #{bad.row}
+                            </td>
+                            <td className="py-2 px-3 font-bold text-slate-700 dark:text-slate-300">
+                              {bad.record_id || `row_${bad.row}`}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
+                                {bad.violation_type || 'Format Anomaly'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                (bad.action_taken || 'Filtered') === 'Sanitized'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
+                              }`}>
+                                {bad.action_taken || 'Filtered'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 font-sans text-slate-600 dark:text-slate-300 text-[11px] max-w-[280px]">
+                              {bad.reason}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

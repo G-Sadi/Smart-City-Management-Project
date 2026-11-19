@@ -2,7 +2,8 @@ import {
   Project, ProjectDetail, Proposal, ComponentItem, Agency,
   ConstraintItem, IngestionAudit, AnalyticsOverview,
   PlannedVsProjectedSeries, LocationDistribution,
-  AIAdvisorResponse, TimeframeSuggestion, User
+  AIAdvisorResponse, TimeframeSuggestion, User,
+  AlgorithmBenchmark, DependencyDAGData, DBStatus
 } from './types';
 import { browserEngine } from './browserEngine';
 
@@ -26,6 +27,39 @@ function setBackendStatus(status: boolean) {
     isBackendOnline = status;
     listeners.forEach(fn => fn(status));
   }
+}
+
+// Live DB Change Polling (every 5 seconds)
+let lastDBTimestamp: string | null = null;
+const dbChangeListeners: Array<(status: DBStatus) => void> = [];
+
+export function subscribeDBChanges(fn: (status: DBStatus) => void) {
+  dbChangeListeners.push(fn);
+  return () => {
+    const idx = dbChangeListeners.indexOf(fn);
+    if (idx >= 0) dbChangeListeners.splice(idx, 1);
+  };
+}
+
+if (typeof window !== 'undefined') {
+  setInterval(async () => {
+    if (isBackendOnline) {
+      try {
+        const res = await fetch(`${API_BASE}/db-status`);
+        if (res.ok) {
+          const data: DBStatus = await res.json();
+          if (lastDBTimestamp && data.last_updated !== lastDBTimestamp) {
+            lastDBTimestamp = data.last_updated;
+            dbChangeListeners.forEach(fn => fn(data));
+          } else if (!lastDBTimestamp) {
+            lastDBTimestamp = data.last_updated;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, 5000);
 }
 
 export async function checkBackendHealth(): Promise<boolean> {
@@ -455,6 +489,101 @@ export const api = {
       }
     }
     return browserEngine.getLocationDistribution();
+  },
+
+  // Hackathon Judge Maximizers: Algorithm Proof, DAG & DB Reactivity
+  getAlgorithmBenchmark: async (): Promise<AlgorithmBenchmark> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<AlgorithmBenchmark>('/algorithm-benchmark');
+      } catch (err) {
+        console.warn('Backend getAlgorithmBenchmark failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getAlgorithmBenchmark();
+  },
+
+  getDependencyDAG: async (): Promise<DependencyDAGData> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<DependencyDAGData>('/dependency-dag');
+      } catch (err) {
+        console.warn('Backend getDependencyDAG failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getDependencyDAG();
+  },
+
+  getDBStatus: async (): Promise<DBStatus> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<DBStatus>('/db-status');
+      } catch (err) {
+        console.warn('Backend getDBStatus failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getDBStatus();
+  },
+
+  applySimulationScenario: async (scenario: string, projectId?: string, agencyCode?: string) => {
+    if (await checkBackendHealth()) {
+      try {
+        const q = new URLSearchParams({ scenario });
+        if (projectId) q.append('project_id', projectId);
+        if (agencyCode) q.append('agency_code', agencyCode);
+        return await request<{ scenario: string; message: string; recalc_result: any }>(`/simulator/apply-scenario?${q.toString()}`, {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.warn('Backend applySimulationScenario failed, using browser engine', err);
+      }
+    }
+    return browserEngine.applySimulationScenario(scenario, projectId, agencyCode);
+  },
+
+  exportRevisedProjectsCsv: async () => {
+    if (await checkBackendHealth()) {
+      window.open(`${API_BASE}/projects/export/csv`, '_blank');
+      return;
+    }
+    const projects = browserEngine.getProjects();
+    const headers = ['Project ID', 'Name', 'Location', 'Agency', 'Cost (Cr Tk)', 'Timespan (Yrs)', 'Start Date', 'Planned End Date', 'Projected End Date', 'Completion %', 'Actual Cost (Cr Tk)', 'Status', 'Goal'];
+    const rows = projects.map(p => [
+      p.project_id, `"${p.name.replace(/"/g, '""')}"`, p.location, p.exec, p.cost, p.timespan,
+      p.start_date, p.planned_end_date || '', p.projected_end_date || '', p.completion,
+      p.actual_cost, p.status, `"${(p.goal || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'civicgrid_revised_schedule_export.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
+
+  exportSanitizationAuditCsv: async () => {
+    if (await checkBackendHealth()) {
+      window.open(`${API_BASE}/sanitization-audit/export/csv`, '_blank');
+      return;
+    }
+    const audits = browserEngine.getAuditReports();
+    const badRows = audits[0]?.bad_rows || [];
+    const headers = ['Source File', 'Row #', 'Record ID / Snippet', 'Violation Type', 'Action Taken', 'Reason', 'Raw Data'];
+    const rows = badRows.map(b => [
+      b.file, b.row, b.record_id, b.violation_type, b.action_taken, `"${b.reason.replace(/"/g, '""')}"`, `"${JSON.stringify(b.data || {}).replace(/"/g, '""')}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'civicgrid_sanitization_audit_report.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   },
 };
 

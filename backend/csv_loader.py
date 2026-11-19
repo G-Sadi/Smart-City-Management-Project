@@ -72,6 +72,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "agencies.csv",
                     "row": row_num,
+                    "record_id": code or f"row_{row_num}",
+                    "violation_type": "Missing Required Field",
+                    "action_taken": "Filtered",
                     "reason": "Missing agency code or name",
                     "data": dict(row)
                 })
@@ -118,6 +121,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "user_types.csv",
                     "row": row_num,
+                    "record_id": code or f"row_{row_num}",
+                    "violation_type": "Missing Required Field",
+                    "action_taken": "Filtered",
                     "reason": "Missing user type code or committee name",
                     "data": dict(row)
                 })
@@ -164,6 +170,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "constraints.csv",
                     "row": row_num,
+                    "record_id": code or f"row_{row_num}",
+                    "violation_type": "Negative Limit" if str(raw_limit).startswith("-") else "Invalid Limit Format",
+                    "action_taken": "Filtered",
                     "reason": f"Invalid max_limit: {raw_limit}",
                     "data": dict(row)
                 })
@@ -209,6 +218,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "projects.csv",
                     "row": row_num,
+                    "record_id": pid or f"row_{row_num}",
+                    "violation_type": "Missing Required Field",
+                    "action_taken": "Filtered",
                     "reason": "Missing required project identifiers (project_id, name, or location)",
                     "data": dict(row)
                 })
@@ -219,6 +231,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "projects.csv",
                     "row": row_num,
+                    "record_id": pid,
+                    "violation_type": "Malformed Date",
+                    "action_taken": "Filtered",
                     "reason": f"Malformed or missing start_date: {row.get('start_date')}",
                     "data": dict(row)
                 })
@@ -229,6 +244,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "projects.csv",
                     "row": row_num,
+                    "record_id": pid,
+                    "violation_type": "Orphan Agency FK",
+                    "action_taken": "Filtered",
                     "reason": f"Orphaned agency reference '{exec_agency}' not in agencies.csv",
                     "data": dict(row)
                 })
@@ -249,6 +267,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "projects.csv",
                     "row": row_num,
+                    "record_id": pid,
+                    "violation_type": "Negative Cost/Timespan/Completion" if "Negative" in str(ex) else "Numeric Parse Error",
+                    "action_taken": "Filtered",
                     "reason": f"Numeric parse error: {str(ex)}",
                     "data": dict(row)
                 })
@@ -333,6 +354,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "proposals.csv",
                     "row": row_num,
+                    "record_id": raw_id or f"row_{row_num}",
+                    "violation_type": "Missing Required Field",
+                    "action_taken": "Filtered",
                     "reason": "Missing proposal ID or name",
                     "data": dict(row)
                 })
@@ -343,6 +367,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "proposals.csv",
                     "row": row_num,
+                    "record_id": raw_id,
+                    "violation_type": "Malformed Date",
+                    "action_taken": "Filtered",
                     "reason": f"Malformed or missing proposal_date: {row.get('proposal_date')}",
                     "data": dict(row)
                 })
@@ -353,6 +380,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "proposals.csv",
                     "row": row_num,
+                    "record_id": raw_id,
+                    "violation_type": "Orphan Agency FK",
+                    "action_taken": "Filtered",
                     "reason": f"Orphaned agency reference '{exec_agency}' not in agencies.csv",
                     "data": dict(row)
                 })
@@ -370,6 +400,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "proposals.csv",
                     "row": row_num,
+                    "record_id": raw_id,
+                    "violation_type": "Negative Cost/Timespan" if "negative" in str(ex).lower() else "Numeric Parse Error",
+                    "action_taken": "Filtered",
                     "reason": f"Numeric parse error: {str(ex)}",
                     "data": dict(row)
                 })
@@ -442,6 +475,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "components.csv",
                     "row": row_num,
+                    "record_id": cid or f"row_{row_num}",
+                    "violation_type": "Missing Required Field",
+                    "action_taken": "Filtered",
                     "reason": "Missing component_id or project_id",
                     "data": dict(row)
                 })
@@ -456,7 +492,10 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "components.csv",
                     "row": row_num,
-                    "reason": f"Invalid budget ratio: {raw_ratio}",
+                    "record_id": cid,
+                    "violation_type": "Invalid Budget Ratio",
+                    "action_taken": "Filtered",
+                    "reason": f"Invalid budget ratio: {raw_ratio} (must be between 0.0 and 1.0)",
                     "data": dict(row)
                 })
                 continue
@@ -473,6 +512,9 @@ def ingest_all_csvs(data_dir: str, db: Session) -> Dict[str, Any]:
                 bad_rows_log.append({
                     "file": "components.csv",
                     "row": row_num,
+                    "record_id": cid,
+                    "violation_type": "Orphan Project FK",
+                    "action_taken": "Filtered",
                     "reason": f"Orphaned project_id '{pid}' not found in projects.csv or proposals.csv",
                     "data": dict(row)
                 })
