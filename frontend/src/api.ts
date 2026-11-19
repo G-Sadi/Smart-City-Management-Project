@@ -47,7 +47,7 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('samurai_token');
+  const token = localStorage.getItem('civicgrid_token') || localStorage.getItem('samurai_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -87,6 +87,8 @@ export const api = {
         const data = await request<{ access_token: string; user: User }>(`/auth/quick-login?role_type=${roleType}`, {
           method: 'POST',
         });
+        localStorage.setItem('civicgrid_token', data.access_token);
+        localStorage.setItem('civicgrid_user', JSON.stringify(data.user));
         localStorage.setItem('samurai_token', data.access_token);
         localStorage.setItem('samurai_user', JSON.stringify(data.user));
         return data;
@@ -107,6 +109,8 @@ export const api = {
     };
 
     const user = roleMap[roleType] || roleMap.APP;
+    localStorage.setItem('civicgrid_token', 'browser-demo-token');
+    localStorage.setItem('civicgrid_user', JSON.stringify(user));
     localStorage.setItem('samurai_token', 'browser-demo-token');
     localStorage.setItem('samurai_user', JSON.stringify(user));
     return { access_token: 'browser-demo-token', user };
@@ -120,14 +124,16 @@ export const api = {
         // fallback
       }
     }
-    const saved = localStorage.getItem('samurai_user');
+    const saved = localStorage.getItem('civicgrid_user') || localStorage.getItem('samurai_user');
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch { }
     }
     return { username: 'guest', role: 'APP', committee: 'Citizen Public User' };
   },
 
   logout: () => {
+    localStorage.removeItem('civicgrid_token');
+    localStorage.removeItem('civicgrid_user');
     localStorage.removeItem('samurai_token');
     localStorage.removeItem('samurai_user');
   },

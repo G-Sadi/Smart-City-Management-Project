@@ -42,12 +42,64 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       });
   }, []);
 
-  const handleExportCsv = () => {
-    window.open('/api/projects/export/csv', '_blank');
+  const handleExportCsv = async () => {
+    if (api.isBackendConnected()) {
+      window.open('/api/projects/export/csv', '_blank');
+      return;
+    }
+    try {
+      const projects = await api.getProjects();
+      const headers = [
+        "Project ID", "Name", "Location", "Agency", "Cost (Cr Tk)", "Timespan (Yrs)",
+        "Start Date", "Planned End Date", "Projected End Date", "Completion %",
+        "Actual Cost (Cr Tk)", "Status", "Goal"
+      ];
+      const rows = projects.map(p => [
+        `"${p.project_id}"`,
+        `"${(p.name || '').replace(/"/g, '""')}"`,
+        `"${p.location || ''}"`,
+        `"${p.exec || ''}"`,
+        p.cost,
+        p.timespan,
+        p.start_date || '',
+        p.planned_end_date || '',
+        p.projected_end_date || '',
+        p.completion,
+        p.actual_cost,
+        `"${p.status || ''}"`,
+        `"${(p.goal || '').replace(/"/g, '""')}"`
+      ]);
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'civicgrid_projects_export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export CSV failed:', err);
+    }
   };
 
-  const handleExportJson = () => {
-    window.open('/api/projects/export/json', '_blank');
+  const handleExportJson = async () => {
+    if (api.isBackendConnected()) {
+      window.open('/api/projects/export/json', '_blank');
+      return;
+    }
+    try {
+      const projects = await api.getProjects();
+      const jsonContent = JSON.stringify(projects, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'civicgrid_projects_export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export JSON failed:', err);
+    }
   };
 
   return (

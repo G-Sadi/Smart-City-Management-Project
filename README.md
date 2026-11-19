@@ -1,7 +1,7 @@
-# Code Samurai: Plan Public Projects in Your City
-## Public Infrastructure Planning, RCPSP Optimization & Civic Monitoring System
+# CivicGrid: Smart City Infrastructure Planning & Monitoring
+## Public Infrastructure Planning, RCPSP Optimization & Civic GIS OS
 
-A production-grade, full-stack civic-tech web application designed to solve the **"Plan Public Projects in Your City"** challenge using the real Code Samurai dataset.
+A production-grade, full-stack civic-tech operating system designed for **"Plan Public Projects in Your City"** infrastructure management using real municipal CSV datasets.
 
 ---
 

@@ -10,13 +10,17 @@ import {
 } from './types';
 
 const STORAGE_KEYS = {
-  PROJECTS: 'samurai_browser_projects',
-  PROPOSALS: 'samurai_browser_proposals',
-  COMPONENTS: 'samurai_browser_components',
-  CONSTRAINTS: 'samurai_browser_constraints',
-  FEEDBACKS: 'samurai_browser_feedbacks',
-  AUDITS: 'samurai_browser_audits',
+  PROJECTS: 'civicgrid_browser_projects',
+  PROPOSALS: 'civicgrid_browser_proposals',
+  COMPONENTS: 'civicgrid_browser_components',
+  CONSTRAINTS: 'civicgrid_browser_constraints',
+  FEEDBACKS: 'civicgrid_browser_feedbacks',
+  AUDITS: 'civicgrid_browser_audits',
 };
+
+function getStorage(key: string): string | null {
+  return localStorage.getItem(key) || localStorage.getItem(key.replace('civicgrid_', 'samurai_'));
+}
 
 // Date math helpers
 function parseDate(s?: string): Date {
@@ -73,7 +77,7 @@ class BrowserEngine {
     }));
 
     // Constraints
-    const savedConstraints = localStorage.getItem(STORAGE_KEYS.CONSTRAINTS);
+    const savedConstraints = getStorage(STORAGE_KEYS.CONSTRAINTS);
     if (savedConstraints) {
       try {
         this.constraints = JSON.parse(savedConstraints);
@@ -85,7 +89,7 @@ class BrowserEngine {
     }
 
     // Projects
-    const savedProjects = localStorage.getItem(STORAGE_KEYS.PROJECTS);
+    const savedProjects = getStorage(STORAGE_KEYS.PROJECTS);
     if (savedProjects) {
       try {
         this.projects = JSON.parse(savedProjects);
@@ -97,7 +101,7 @@ class BrowserEngine {
     }
 
     // Proposals
-    const savedProposals = localStorage.getItem(STORAGE_KEYS.PROPOSALS);
+    const savedProposals = getStorage(STORAGE_KEYS.PROPOSALS);
     if (savedProposals) {
       try {
         this.proposals = JSON.parse(savedProposals);
@@ -109,7 +113,7 @@ class BrowserEngine {
     }
 
     // Components
-    const savedComponents = localStorage.getItem(STORAGE_KEYS.COMPONENTS);
+    const savedComponents = getStorage(STORAGE_KEYS.COMPONENTS);
     if (savedComponents) {
       try {
         this.components = JSON.parse(savedComponents);
@@ -121,7 +125,7 @@ class BrowserEngine {
     }
 
     // Feedbacks
-    const savedFeedbacks = localStorage.getItem(STORAGE_KEYS.FEEDBACKS);
+    const savedFeedbacks = getStorage(STORAGE_KEYS.FEEDBACKS);
     if (savedFeedbacks) {
       try {
         this.feedbacks = JSON.parse(savedFeedbacks);
@@ -200,7 +204,7 @@ class BrowserEngine {
         approving_authority: authority,
         suggested_start_date: sDate,
         suggested_end_date: eDate,
-        review_notes: 'Parsed from Code Samurai initial dataset.',
+        review_notes: 'Parsed from CivicGrid initial municipal dataset.',
         components: [],
       };
     });
@@ -919,7 +923,7 @@ class BrowserEngine {
     recommendations.push('Schedule procurement of materials in Q1 to ensure pre-monsoon completion of substructures.');
 
     return {
-      analysis: `### Code Samurai Urban Infrastructure Intelligence Brief\n\n` +
+      analysis: `### CivicGrid Urban Infrastructure Intelligence Brief\n\n` +
         `This automated analysis evaluated **${this.projects.length} municipal projects** across **${this.agencies.length} agencies**.\n\n` +
         `#### Key Bottleneck Findings:\n` +
         bottlenecks.map(b => `- ${b}`).join('\n') +

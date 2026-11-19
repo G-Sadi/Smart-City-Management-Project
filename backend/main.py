@@ -71,8 +71,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Plan Public Projects in Your City - Code Samurai API",
-    description="Backend API for Public Infrastructure Planning, RCPSP Scheduling & Monitoring System",
+    title="CivicGrid — Smart City Infrastructure Planning & Monitoring API",
+    description="Backend API for CivicGrid Public Infrastructure Planning, RCPSP Scheduling & GIS Monitoring System",
     version="2.0.0"
 )
 
@@ -918,7 +918,7 @@ def export_projects_csv(db: Session = Depends(get_db)):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=revised_schedule_export.csv"}
+        headers={"Content-Disposition": "attachment; filename=civicgrid_revised_schedule_export.csv"}
     )
 
 @app.get("/api/projects/export/json")

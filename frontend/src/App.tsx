@@ -24,7 +24,7 @@ export function App() {
   // Modals & UI states
   const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('samurai_theme') === 'dark' || 
+    return (localStorage.getItem('civicgrid_theme') || localStorage.getItem('samurai_theme')) === 'dark' ||
       window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -34,16 +34,18 @@ export function App() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('civicgrid_theme', 'dark');
       localStorage.setItem('samurai_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('civicgrid_theme', 'light');
       localStorage.setItem('samurai_theme', 'light');
     }
   }, [darkMode]);
 
   // Load User from LocalStorage or fetch current user
   useEffect(() => {
-    const savedUser = localStorage.getItem('samurai_user');
+    const savedUser = localStorage.getItem('civicgrid_user') || localStorage.getItem('samurai_user');
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
@@ -55,7 +57,7 @@ export function App() {
       .then(u => {
         if (u && u.username !== 'guest') setUser(u);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Check backend health & subscribe to connection status
@@ -198,7 +200,7 @@ export function App() {
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            <strong>Code Samurai 2026</strong> • Plan Public Projects in Your City • RCPSP Scheduling Engine
+            <strong>CivicGrid</strong> • Smart City OS • Public Infrastructure Planning & GIS Monitoring
           </span>
           <span className="font-mono text-[11px] text-slate-400">
             Loaded from <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">/data/*.csv</code> (134 Projects, 134 Proposals, 536 Components)

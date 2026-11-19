@@ -168,7 +168,7 @@ def generate_ai_advisor_response(
                 )
 
         prompt = (
-            f"You are the Chief AI Urban Planning & Infrastructure Advisor for the Code Samurai Smart City Management System.\n"
+            f"You are the Chief AI Urban Planning & Infrastructure Advisor for the CivicGrid Smart City Management System.\n"
             f"Context Data:\n{context_info}\n\n"
             f"User Prompt / Task: {user_prompt or f'Perform a deep analysis for {query_type}.'}\n\n"
             f"Respond with high-value, actionable municipal engineering guidance formatted in clean GitHub Markdown.\n"

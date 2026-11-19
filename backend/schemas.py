@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 # ----------------- Auth Schemas -----------------
 class LoginRequest(BaseModel):
     username: str
-    password: Optional[str] = "samurai2026"
+    password: Optional[str] = "civicgrid2026"
     role: Optional[str] = None  # Quick demo role: SYSADMIN, ECNEC, MOP, EXEC, APP
     agency: Optional[str] = None
 

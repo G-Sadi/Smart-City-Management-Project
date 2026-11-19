@@ -98,10 +98,10 @@ export const QuickLoginModal: React.FC<QuickLoginModalProps> = ({
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-emerald-500" />
-              <span>1-Click Quick Demo Login (Role-Based Access)</span>
+              <span>CivicGrid • 1-Click Role-Based Quick Access</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Select any role card below to instantly test role-specific workflows and dashboards.
+              Select an executive authority or citizen role below to instantly explore customized dashboards and workflows.
             </p>
           </div>
           <button

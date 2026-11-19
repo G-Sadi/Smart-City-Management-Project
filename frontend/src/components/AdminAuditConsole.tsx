@@ -267,7 +267,7 @@ export const AdminAuditConsole: React.FC<AdminAuditConsoleProps> = ({
                     {c.max_limit} {c.constraint_type === 'yearly_funding' ? 'Cr Tk' : 'Units'}
                   </td>
                   <td className="py-2.5 px-3 text-slate-500 text-[11px]">
-                    {c.description || 'Statutory Code Samurai limit'}
+                    {c.description || 'Statutory CivicGrid limit'}
                   </td>
                   <td className="py-2.5 px-3 text-right">
                     <button

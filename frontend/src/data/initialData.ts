@@ -1,4 +1,4 @@
-// Auto-generated bundled Code Samurai dataset for standalone / GitHub Pages execution
+// Auto-generated bundled CivicGrid municipal dataset for standalone / GitHub Pages execution
 export const rawAgencies = [
   {
     "code": "LGED",
