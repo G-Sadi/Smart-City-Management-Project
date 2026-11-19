@@ -224,3 +224,5 @@ class AIAdvisorResponse(BaseModel):
     recommendations: List[str] = []
     metrics: Dict[str, Any] = {}
     source: str = "gemini-2.5-flash"  # or 'rule-based-fallback'
+    reasoning_trace: Optional[Dict[str, Any]] = None
+    artifacts: Optional[Dict[str, Any]] = None

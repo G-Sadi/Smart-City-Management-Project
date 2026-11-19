@@ -457,6 +457,14 @@ export const api = {
     return browserEngine.getAIAdvice(query_type, project_id, proposal_id, user_prompt);
   },
 
+  simulateWhatIf: async (query: string) => {
+    return browserEngine.simulateWhatIf(query);
+  },
+
+  applySimulation: (sim: any) => {
+    browserEngine.applySimulationToState(sim);
+  },
+
   // Analytics
   getAnalyticsOverview: async (): Promise<AnalyticsOverview> => {
     if (await checkBackendHealth()) {

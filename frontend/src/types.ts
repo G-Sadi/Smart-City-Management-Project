@@ -220,12 +220,92 @@ export interface LocationDistribution {
   limit: number;
 }
 
+export interface ReasoningTrace {
+  summary: string;
+  durationMs: number;
+  steps: string[];
+}
+
+export interface GenerativeMetricPill {
+  label: string;
+  value: string;
+  variant?: 'emerald' | 'amber' | 'rose' | 'blue' | 'slate';
+}
+
+export interface GenerativeSeverityItem {
+  id: string;
+  title: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  impact: string;
+  agency?: string;
+  projectId?: string;
+}
+
+export interface WhatIfSimulationResult {
+  isSimulation: boolean;
+  scenarioTitle: string;
+  parameters: {
+    targetType: 'agency' | 'zone' | 'project' | 'budget';
+    targetName: string;
+    delayDays?: number;
+    budgetCudPct?: number;
+  };
+  baselineMakespanDays: number;
+  simulatedMakespanDays: number;
+  makespanDeltaDays: number;
+  newlyDelayedProjectsCount: number;
+  affectedProjects: Array<{
+    project_id: string;
+    name: string;
+    exec: string;
+    originalEnd?: string;
+    newProjectedEnd?: string;
+    slippageDays: number;
+  }>;
+  fiscalImpactCrTk: number;
+  recommendations: string[];
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  timestamp: string;
+  text: string;
+  reasoningTrace?: ReasoningTrace;
+  artifacts?: {
+    metricPills?: GenerativeMetricPill[];
+    severityTable?: GenerativeSeverityItem[];
+    clickableProjects?: string[];
+    clickableZones?: string[];
+    whatIfSimulation?: WhatIfSimulationResult;
+    actionButtons?: Array<{
+      action: 'map' | 'gantt' | 'whatif' | 'ecnec_memo';
+      label: string;
+      icon?: string;
+    }>;
+  };
+  source?: string;
+}
+
 export interface AIAdvisorResponse {
   analysis: string;
   bottlenecks: string[];
   recommendations: string[];
   metrics: Record<string, any>;
   source: string;
+  reasoning_trace?: ReasoningTrace;
+  artifacts?: {
+    metricPills?: GenerativeMetricPill[];
+    severityTable?: GenerativeSeverityItem[];
+    clickableProjects?: string[];
+    clickableZones?: string[];
+    whatIfSimulation?: WhatIfSimulationResult;
+    actionButtons?: Array<{
+      action: 'map' | 'gantt' | 'whatif' | 'ecnec_memo';
+      label: string;
+      icon?: string;
+    }>;
+  };
 }
 
 export interface User {

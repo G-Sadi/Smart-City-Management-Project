@@ -37,7 +37,7 @@ export const ExecutiveKpiRibbon: React.FC<ExecutiveKpiRibbonProps> = ({
   const bottleneckCount = totalDelayed + (overview?.delayed_projects ? Math.min(overview.delayed_projects, 3) : 2);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-7 relative z-10 pt-1">
       {/* 1. Total Capital Investment */}
       <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:shadow-md transition">
         <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-bl-full pointer-events-none" />
