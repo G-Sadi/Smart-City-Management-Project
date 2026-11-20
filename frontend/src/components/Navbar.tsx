@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import civicgridLogo from '../assets/civicgrid-logo.png';
 
 interface NavbarProps {
   activeTab: string;
@@ -61,8 +62,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between h-16 gap-3">
           {/* Left: Brand Identity */}
           <div className="flex items-center space-x-3 cursor-pointer select-none flex-shrink-0" onClick={() => setActiveTab('map')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/25 ring-1 ring-white/20">
-              <Building2 className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-emerald-500/25 ring-1 ring-white/20 bg-[#0B1120] flex items-center justify-center">
+              <img src={civicgridLogo} alt="CivicGrid Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
