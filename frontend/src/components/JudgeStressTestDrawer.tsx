@@ -209,7 +209,7 @@ export const JudgeStressTestDrawer: React.FC<JudgeStressTestDrawerProps> = ({
         </div>
 
         {/* Footer with 1-Click Export Revised CSV */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-3">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-3 safe-bottom">
           <button
             onClick={() => api.exportRevisedProjectsCsv()}
             className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition shadow-sm cursor-pointer"

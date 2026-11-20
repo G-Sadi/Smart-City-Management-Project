@@ -123,7 +123,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-x-hidden max-w-full">
       {/* Sticky Navigation Bar */}
       <Navbar
         activeTab={activeTab}
@@ -135,10 +135,11 @@ export function App() {
         isSyncing={isSyncing}
         syncSuccess={syncSuccess}
         isBackendConnected={isBackendConnected}
+        onOpenStressTest={() => setIsStressTestOpen(true)}
       />
 
-      {/* Main Content Area with generous top spacing to prevent sticky navbar clipping */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-7 sm:pt-9 pb-12 transition-all">
+      {/* Main Content Area with generous top spacing and safe bottom padding for mobile home indicators */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-12 transition-all">
         {/* Executive Real-Time KPI Ribbon */}
         <ExecutiveKpiRibbon 
           overview={overview} 
@@ -251,10 +252,10 @@ export function App() {
         onRecalculated={loadCoreData}
       />
 
-      {/* Floating Judge Stress-Test Launcher Pill */}
+      {/* Floating Judge Stress-Test Launcher Pill (Desktop only; on mobile accessible via drawer) */}
       <button
         onClick={() => setIsStressTestOpen(true)}
-        className="fixed bottom-6 right-6 z-40 px-3.5 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xl flex items-center space-x-2 transition hover:scale-105 cursor-pointer no-print"
+        className="hidden md:flex fixed bottom-6 right-6 z-40 px-3.5 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xl items-center space-x-2 transition hover:scale-105 cursor-pointer no-print"
         title="Open Judge Stress-Test Simulator (Section 4)"
       >
         <Sliders className="w-4 h-4" />

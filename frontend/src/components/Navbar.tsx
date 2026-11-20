@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2, MapPin, BarChart3, FileSpreadsheet,
   ShieldCheck, RefreshCw, Sun, Moon, Sparkles, UserCheck, 
-  CheckCircle2, Search, Menu, X, Command
+  CheckCircle2, Search, Menu, X, Command, Sliders
 } from 'lucide-react';
 import { User } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -20,6 +20,7 @@ interface NavbarProps {
   isSyncing: boolean;
   syncSuccess: boolean;
   isBackendConnected?: boolean | null;
+  onOpenStressTest?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -31,10 +32,23 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSyncRecalculate,
   isSyncing,
   syncSuccess,
-  isBackendConnected
+  isBackendConnected,
+  onOpenStressTest
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Prevent background scroll when mobile drawer is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
 
   const tabs = [
     { id: 'map', label: 'Civic GIS Map', icon: MapPin },
@@ -58,17 +72,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 shadow-xs transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-3">
           {/* Left: Brand Identity */}
-          <div className="flex items-center space-x-3 cursor-pointer select-none flex-shrink-0" onClick={() => setActiveTab('map')}>
-            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-emerald-500/25 ring-1 ring-white/20 bg-[#0B1120] flex items-center justify-center">
+          <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer select-none flex-shrink-0" onClick={() => setActiveTab('map')}>
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-md shadow-emerald-500/25 ring-1 ring-white/20 bg-[#0B1120] flex items-center justify-center flex-shrink-0">
               <img src={civicgridLogo} alt="CivicGrid Logo" className="w-full h-full object-cover" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-lg text-slate-900 dark:text-white tracking-tight">CivicGrid</span>
-                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+              <div className="flex items-center space-x-1.5 sm:space-x-2">
+                <span className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">CivicGrid</span>
+                <span className="hidden sm:inline-flex text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
                   Smart City OS
                 </span>
               </div>
@@ -95,12 +109,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right: Actions Toolbar */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-1.5 sm:space-x-2.5">
             {/* Mobile Search Button */}
             <button
               onClick={onOpenCommandPalette}
-              className="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition"
+              className="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition min-w-[38px] min-h-[38px] flex items-center justify-center"
               title="Search (Ctrl+K)"
+              aria-label="Search"
             >
               <Search className="w-4 h-4" />
             </button>
@@ -124,19 +139,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Sync & Recalculate Button */}
+            {/* Sync & Recalculate Button (Desktop & Tablet) */}
             <button
               onClick={onSyncRecalculate}
               disabled={isSyncing}
               title="Synchronize Database changes and recalculate all RCPSP schedules"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-xs ${
+              className={`hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-xs ${
                 syncSuccess
                   ? 'bg-emerald-600 text-white'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800'
               }`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">
+              <span>
                 {isSyncing ? 'Syncing...' : syncSuccess ? 'Synced!' : 'Sync & Recalculate'}
               </span>
             </button>
@@ -144,7 +159,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Dark / Light Toggle */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700/60 shadow-xs cursor-pointer"
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700/60 shadow-xs cursor-pointer min-w-[38px] min-h-[38px] flex items-center justify-center"
               title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
               aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
@@ -155,23 +170,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
 
-            {/* User / Quick Login Button */}
+            {/* User / Quick Login Button (Hidden on phones, accessible via drawer) */}
             <button
               onClick={onOpenQuickLogin}
-              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold border transition shadow-xs ${getRoleBadgeColor(user?.role)}`}
+              className={`hidden sm:flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold border transition shadow-xs ${getRoleBadgeColor(user?.role)}`}
               title="Switch user role"
             >
               <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
               <span className="truncate max-w-[110px] sm:max-w-none">
                 {user ? `${user.role}${user.agency ? ` (${user.agency})` : ''}` : 'Citizen'}
               </span>
-              <span className="opacity-60 underline text-[10px] hidden sm:inline">Switch</span>
+              <span className="opacity-60 underline text-[10px]">Switch</span>
             </button>
 
             {/* Mobile Menu Hamburger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="sm:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition"
+              className="sm:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition min-w-[38px] min-h-[38px] flex items-center justify-center"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -200,34 +215,143 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
         </div>
-
-        {/* Mobile Dropdown Menu */}
-        {mobileMenuOpen && (
-          <div className="sm:hidden py-3 border-t border-slate-200 dark:border-slate-800 space-y-1 animate-fade-in">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition ${
-                    isActive
-                      ? 'bg-emerald-600 text-white font-semibold'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
+
+      {/* Mobile Slide-Over Drawer with Dimmed Backdrop */}
+      {mobileMenuOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 overflow-hidden">
+          {/* Dimmed Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity animate-fade-in"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          {/* Drawer Sheet */}
+          <div className="fixed inset-y-0 right-0 w-[85vw] max-w-xs h-[100dvh] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col z-50 animate-slide-left">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/40">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#0B1120] flex items-center justify-center ring-1 ring-white/10">
+                  <img src={civicgridLogo} alt="CivicGrid Logo" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-1.5">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white">CivicGrid</span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      OS
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-w-[36px] min-h-[36px] flex items-center justify-center"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Drawer Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* User Profile / Role Card */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Active Identity
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getRoleBadgeColor(user?.role)}`}>
+                    {user?.role || 'CITIZEN'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate max-w-[170px]">
+                    {user ? `${user.username}${user.agency ? ` (${user.agency})` : ''}` : 'Citizen Observer'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenQuickLogin();
+                    }}
+                    className="text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                  >
+                    Switch
+                  </button>
+                </div>
+              </div>
+
+              {/* Engine Status Pill */}
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs">
+                <span className="text-slate-500 dark:text-slate-400">RCPSP Engine:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>{isBackendConnected ? 'FastAPI Connected' : 'Live Browser Engine'}</span>
+                </span>
+              </div>
+
+              {/* 7 Navigation Tabs with >= 44px Touch Targets */}
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 mb-2">
+                  Navigation Modules
+                </p>
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center space-x-3 px-3.5 py-3 rounded-xl text-xs font-semibold text-left transition ${
+                        isActive
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2 safe-bottom">
+              <button
+                onClick={() => {
+                  onSyncRecalculate();
+                  setMobileMenuOpen(false);
+                }}
+                disabled={isSyncing}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 ${
+                  syncSuccess
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                }`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Recalculating...' : syncSuccess ? 'Schedules Synced!' : 'Sync & Recalculate'}</span>
+              </button>
+
+              {onOpenStressTest && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenStressTest();
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm flex items-center justify-center space-x-2 transition"
+                >
+                  <Sliders className="w-4 h-4" />
+                  <span>Open Judge Simulator</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

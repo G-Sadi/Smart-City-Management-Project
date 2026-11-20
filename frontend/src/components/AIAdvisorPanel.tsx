@@ -955,17 +955,18 @@ export const AIAdvisorPanel: React.FC<AIAdvisorPanelProps> = ({
               value={customPrompt}
               onChange={e => setCustomPrompt(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
-              className="flex-1 text-xs px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+              className="flex-1 text-base sm:text-xs px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
             />
 
             {/* Send Button */}
             <button
               onClick={() => handleSend()}
               disabled={loading || !customPrompt.trim()}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center space-x-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3.5 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center space-x-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              title="Send Prompt"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{loading ? 'Thinking...' : 'Send'}</span>
+              <span className="hidden sm:inline">{loading ? 'Thinking...' : 'Send'}</span>
             </button>
           </div>
         </div>

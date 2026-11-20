@@ -95,12 +95,17 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     camera.position.copy(initialCamPos);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: false, powerPreference: 'high-performance' });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 2));
+    renderer.shadowMap.enabled = !isMobile;
+    if (!isMobile) {
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
     container.innerHTML = '';
+    container.style.touchAction = 'none';
     container.appendChild(renderer.domElement);
 
     // 2. Lighting
@@ -383,9 +388,41 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
 
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
+    // Multi-touch Pinch to Zoom on Mobile Screens
+    let touchStartDist = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchStartDist = Math.hypot(dx, dy);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && touchStartDist > 0) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const currentDist = Math.hypot(dx, dy);
+        if (currentDist > 0) {
+          const factor = touchStartDist / currentDist;
+          spherical.radius = Math.max(12, Math.min(110, spherical.radius * (1 + (factor - 1) * 0.08)));
+          camera.position.setFromSpherical(spherical).add(target);
+          camera.lookAt(target);
+          touchStartDist = currentDist;
+        }
+      }
+    };
+
+    const onTouchEnd = () => {
+      touchStartDist = 0;
+    };
+
     container.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: true });
+    container.addEventListener('touchend', onTouchEnd);
     container.addEventListener('wheel', onWheel, { passive: false });
     container.addEventListener('click', onClick);
     container.addEventListener('contextmenu', onContextMenu);
@@ -440,6 +477,9 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       container.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
       container.removeEventListener('wheel', onWheel);
       container.removeEventListener('click', onClick);
       container.removeEventListener('contextmenu', onContextMenu);
@@ -460,9 +500,9 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
   }, [projects, components, selectedProjectId, isDark, projectRisks, projectPositions]);
 
   return (
-    <div className="relative w-full h-[580px] lg:h-[650px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 select-none">
+    <div className="relative w-full h-[50dvh] min-h-[350px] sm:h-[500px] lg:h-[650px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 select-none touch-none">
       {/* 3D WebGL Canvas Container */}
-      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
       {/* Floating 3D Navigation Controls Bar */}
       <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-slate-300 shadow-xl z-20">
@@ -489,8 +529,8 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         </button>
       </div>
 
-      {/* 3D Legend & Status Overlay */}
-      <div className="absolute bottom-4 left-4 p-3 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-800 text-xs text-slate-300 shadow-xl z-20 space-y-2 pointer-events-auto">
+      {/* 3D Legend & Status Overlay (Desktop / Tablet only) */}
+      <div className="absolute bottom-4 left-4 p-3 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-800 text-xs text-slate-300 shadow-xl z-20 space-y-2 pointer-events-auto hidden sm:block">
         <div className="flex items-center space-x-2 font-medium text-slate-200 pb-1 border-b border-slate-800">
           <Layers className="w-3.5 h-3.5 text-cyan-400" />
           <span>3D City Twin Visual Encoding</span>
@@ -527,7 +567,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
             top: `${hoveredProject.screenY}px`,
           }}
         >
-          <div className="w-72 p-3 rounded-xl bg-slate-900/95 backdrop-blur-md border border-cyan-500/30 text-white shadow-2xl">
+          <div className="w-72 max-w-[calc(100vw-32px)] p-3 rounded-xl bg-slate-900/95 backdrop-blur-md border border-cyan-500/30 text-white shadow-2xl">
             <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800">
               <div>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-semibold">

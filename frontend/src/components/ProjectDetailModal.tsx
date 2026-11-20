@@ -74,14 +74,17 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
         onClick={onClose}
       />
 
-      {/* Slide-Over Drawer Container */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      {/* Slide-Over Drawer on Desktop / Native Bottom Sheet on Mobile */}
+      <div className="fixed inset-x-0 bottom-0 max-h-[92dvh] sm:max-h-full sm:inset-y-0 sm:right-0 sm:left-auto max-w-full flex sm:pl-10 z-50">
         <div 
-          className="w-screen max-w-2xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-slide-left"
+          className="w-full sm:w-screen sm:max-w-2xl bg-white dark:bg-slate-900 shadow-2xl rounded-t-3xl sm:rounded-none border-t sm:border-t-0 border-l-0 sm:border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-slide-up sm:animate-slide-left"
           onClick={e => e.stopPropagation()}
         >
+          {/* Mobile Bottom Sheet Grab Handle */}
+          <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2.5 sm:hidden flex-shrink-0" />
+
           {/* Drawer Header */}
-          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-800/40">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-800/40">
             <div>
               <div className="flex items-center space-x-2 mb-1.5">
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
@@ -113,7 +116,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           </div>
 
           {/* Drawer Body Scroll */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6 safe-bottom">
             {loading || !project ? (
               <div className="p-12 text-center text-xs text-slate-400 space-y-2">
                 <div className="w-8 h-8 mx-auto border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />

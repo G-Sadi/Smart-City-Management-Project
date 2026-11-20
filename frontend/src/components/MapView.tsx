@@ -325,8 +325,8 @@ export const MapView: React.FC<MapViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Live Municipal Telemetry Streaming Ribbon */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-xs shadow-md">
-        <div className="flex items-center space-x-3">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-xs shadow-md">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           <button
             onClick={handleToggleLiveSensor}
             className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
@@ -337,7 +337,7 @@ export const MapView: React.FC<MapViewProps> = ({
             title="Toggle Live IoT Telemetry Simulator"
           >
             <span className={`w-2 h-2 rounded-full ${isLiveSensorActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-            <span>{isLiveSensorActive ? '● Live Sensors ON' : '○ Sensors Paused'}</span>
+            <span>{isLiveSensorActive ? 'Live Sensors ON' : 'Sensors Paused'}</span>
           </button>
 
           {/* Real-time Ticker Metrics */}
@@ -367,18 +367,18 @@ export const MapView: React.FC<MapViewProps> = ({
         {telemetrySnap?.hotspot_alert && (
           <div
             onClick={() => telemetrySnap.hotspot_alert?.related_project_id && handleFlyToProject(telemetrySnap.hotspot_alert.related_project_id)}
-            className="cursor-pointer flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-950/90 border border-rose-800 text-rose-300 text-[11px] font-semibold hover:bg-rose-900 transition-colors animate-pulse"
+            className="cursor-pointer flex items-center space-x-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-rose-950/90 border border-rose-800 text-rose-300 text-[11px] font-semibold hover:bg-rose-900 transition-colors animate-pulse"
             title="Click to zoom to bottleneck corridor"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-            <span className="truncate max-w-xs">{telemetrySnap.hotspot_alert.message}</span>
+            <span className="truncate max-w-[170px] sm:max-w-xs">{telemetrySnap.hotspot_alert.message}</span>
           </div>
         )}
 
         {/* Action: Report Civic Issue */}
         <button
           onClick={() => setIsReportModalOpen(true)}
-          className="px-3.5 py-1 text-xs font-bold text-white bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 rounded-lg shadow-sm transition-all flex items-center space-x-1.5"
+          className="px-3 sm:px-3.5 py-1 text-xs font-bold text-white bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 rounded-lg shadow-sm transition-all flex items-center space-x-1.5"
         >
           <AlertTriangle className="w-3.5 h-3.5" />
           <span>Report Civic Issue</span>
@@ -490,9 +490,9 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* Main View Grid: Map/Twin on Left (8 cols), Explorer / Citizen Feed on Right (4 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Map / 3D Twin View Container */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm min-h-[600px] relative overflow-hidden group">
+        <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm min-h-[360px] sm:min-h-[480px] lg:min-h-[600px] relative overflow-hidden group">
           {viewMode === '2d' ? (
-            <div className="w-full h-[600px] relative">
+            <div className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] relative">
               <div ref={mapContainerRef} className="w-full h-full rounded-xl shadow-inner" />
 
               {/* Floating Map Controls Card (Top-Right) */}
@@ -523,7 +523,7 @@ export const MapView: React.FC<MapViewProps> = ({
           ) : (
             <Suspense
               fallback={
-                <div className="w-full h-[600px] flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
+                <div className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
                   <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
                   <p className="text-xs font-mono text-cyan-400">Loading 3D Digital Twin Engine (Three.js)...</p>
                 </div>
