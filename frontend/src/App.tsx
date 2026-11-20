@@ -12,13 +12,17 @@ import { QuickLoginModal } from './components/QuickLoginModal';
 import { ExecutiveKpiRibbon } from './components/ExecutiveKpiRibbon';
 import { CommandPalette } from './components/CommandPalette';
 import { JudgeStressTestDrawer } from './components/JudgeStressTestDrawer';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { RoleGuidedTour } from './components/common/RoleGuidedTour';
 import { Project, Agency, AnalyticsOverview, User, ComponentItem } from './types';
 import { api, subscribeBackendStatus, checkBackendHealth, subscribeDBChanges } from './api';
 import { useTheme } from './context/ThemeContext';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { Sliders, CheckCircle2 } from 'lucide-react';
 
-export function App() {
+function AppContent() {
   const { isDark, toggleTheme } = useTheme();
+  const { isBn, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<string>('map');
   const [projects, setProjects] = useState<Project[]>([]);
   const [components, setComponents] = useState<ComponentItem[]>([]);
@@ -51,12 +55,12 @@ export function App() {
   // Subscribe to live DB mutations (polling or socket updates)
   useEffect(() => {
     const unsub = subscribeDBChanges(() => {
-      setDbNotification('Direct DB Change Detected — Schedules Recalculated');
+      setDbNotification(isBn ? 'ডাটাবেজে পরিবর্তন সনাক্ত — সময়রেখা পুনঃগণিত' : 'Direct DB Change Detected — Schedules Recalculated');
       loadCoreData();
       setTimeout(() => setDbNotification(null), 4500);
     });
     return () => unsub();
-  }, []);
+  }, [isBn]);
 
   // Load User from LocalStorage or fetch current user
   useEffect(() => {
@@ -138,75 +142,85 @@ export function App() {
         onOpenStressTest={() => setIsStressTestOpen(true)}
       />
 
-      {/* Main Content Area with generous top spacing and safe bottom padding for mobile home indicators */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-12 transition-all">
-        {/* Executive Real-Time KPI Ribbon */}
-        <ExecutiveKpiRibbon 
-          overview={overview} 
-          projects={projects} 
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-12 transition-all">
+        {/* Role-Specific Dismissible Guided Onboarding Banner */}
+        <RoleGuidedTour
+          user={user}
+          onNavigateTab={(tab) => setActiveTab(tab)}
         />
-        {activeTab === 'map' && (
-          <MapView
-            projects={projects}
-            components={components}
-            onSelectProject={(id) => setSelectedProjectId(id)}
-            selectedProjectId={selectedProjectId}
-          />
-        )}
 
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard
-            overview={overview}
-            agencies={agencies}
-            onRefresh={loadCoreData}
-          />
-        )}
+        {/* Executive Real-Time KPI Ribbon */}
+        <ExecutiveKpiRibbon
+          overview={overview}
+          projects={projects}
+        />
 
-        {activeTab === 'proposals' && (
-          <ProposalCreator
-            agencies={agencies}
-            onProposalCreated={() => {
-              loadCoreData();
-              setActiveTab('approvals');
-            }}
-          />
-        )}
+        {/* Tab Views wrapped in Error Boundaries */}
+        <ErrorBoundary fallbackMessage="Unable to load this view. Click below to recover.">
+          {activeTab === 'map' && (
+            <MapView
+              projects={projects}
+              components={components}
+              onSelectProject={(id) => setSelectedProjectId(id)}
+              selectedProjectId={selectedProjectId}
+            />
+          )}
 
-        {activeTab === 'approvals' && (
-          <ApprovingPortal
-            user={user}
-            onActionComplete={loadCoreData}
-          />
-        )}
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard
+              overview={overview}
+              agencies={agencies}
+              onRefresh={loadCoreData}
+            />
+          )}
 
-        {activeTab === 'progress' && (
-          <ProgressUpdateDesk
-            user={user}
-            projects={projects}
-            onProgressUpdated={loadCoreData}
-            onOpenStressTest={() => setIsStressTestOpen(true)}
-          />
-        )}
+          {activeTab === 'proposals' && (
+            <ProposalCreator
+              agencies={agencies}
+              onProposalCreated={() => {
+                loadCoreData();
+                setActiveTab('approvals');
+              }}
+            />
+          )}
 
-        {activeTab === 'admin' && (
-          <AdminAuditConsole
-            agencies={agencies}
-            onRefreshNeeded={loadCoreData}
-            onOpenStressTest={() => setIsStressTestOpen(true)}
-          />
-        )}
+          {activeTab === 'approvals' && (
+            <ApprovingPortal
+              user={user}
+              onActionComplete={loadCoreData}
+            />
+          )}
 
-        {activeTab === 'ai' && (
-          <AIAdvisorPanel
-            projects={projects}
-            agencies={agencies}
-            overview={overview}
-            onSelectProject={(id) => setSelectedProjectId(id)}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-            onOpenStressTest={() => setIsStressTestOpen(true)}
-            onRecalculate={handleSyncRecalculate}
-          />
-        )}
+          {activeTab === 'progress' && (
+            <ProgressUpdateDesk
+              user={user}
+              projects={projects}
+              onProgressUpdated={loadCoreData}
+              onOpenStressTest={() => setIsStressTestOpen(true)}
+            />
+          )}
+
+          {activeTab === 'admin' && (
+            <AdminAuditConsole
+              agencies={agencies}
+              onRefreshNeeded={loadCoreData}
+              onOpenStressTest={() => setIsStressTestOpen(true)}
+            />
+          )}
+
+          {activeTab === 'ai' && (
+            <AIAdvisorPanel
+              projects={projects}
+              agencies={agencies}
+              overview={overview}
+              onSelectProject={(id) => setSelectedProjectId(id)}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onOpenStressTest={() => setIsStressTestOpen(true)}
+              onRecalculate={handleSyncRecalculate}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Project Detail Modal */}
@@ -224,7 +238,7 @@ export function App() {
           setUser(u);
           // Smart redirect based on role
           if (u.role === 'ECNEC' || u.role === 'MOP') setActiveTab('approvals');
-          else if (u.role === 'EXEC') setActiveTab('progress');
+          else if (u.role === 'EXEC' || u.role?.startsWith('EXEC_')) setActiveTab('progress');
           else if (u.role === 'SYSADMIN') setActiveTab('admin');
         }}
       />
@@ -235,6 +249,7 @@ export function App() {
         onClose={() => setIsCommandPaletteOpen(false)}
         projects={projects}
         agencies={agencies}
+        components={components}
         onSelectProject={(id) => {
           setSelectedProjectId(id);
           setActiveTab('map');
@@ -242,6 +257,8 @@ export function App() {
         onSelectLocation={() => setActiveTab('map')}
         onSelectAgency={() => setActiveTab('progress')}
         onNavigateTab={(tab) => setActiveTab(tab)}
+        onOpenQuickLogin={() => setIsQuickLoginOpen(true)}
+        onSyncRecalculate={handleSyncRecalculate}
       />
 
       {/* Judge Runtime Stress-Test Simulator Drawer (Section 4) */}
@@ -252,14 +269,14 @@ export function App() {
         onRecalculated={loadCoreData}
       />
 
-      {/* Floating Judge Stress-Test Launcher Pill (Desktop only; on mobile accessible via drawer) */}
+      {/* Floating Judge Stress-Test Launcher Pill */}
       <button
         onClick={() => setIsStressTestOpen(true)}
         className="hidden md:flex fixed bottom-6 right-6 z-40 px-3.5 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xl items-center space-x-2 transition hover:scale-105 cursor-pointer no-print"
         title="Open Judge Stress-Test Simulator (Section 4)"
       >
         <Sliders className="w-4 h-4" />
-        <span>Judge Simulator</span>
+        <span>{isBn ? 'জাজ সিমুলেটর' : 'Judge Simulator'}</span>
       </button>
 
       {/* Real-time DB Mutation Toast Notification */}
@@ -274,14 +291,22 @@ export function App() {
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            <strong>CivicGrid</strong> • Smart City OS • Public Infrastructure Planning & GIS Monitoring
+            <strong>{t('app.name')}</strong> • {t('app.tagline')} • {t('app.subtitle')}
           </span>
           <span className="font-mono text-[11px] text-slate-400">
-            Loaded from <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">/data/*.csv</code> (134 Projects, 134 Proposals, 536 Components)
+            {isBn ? 'উৎস ডাটা: /data/*.csv (১৩৪ প্রকল্প, ৫৩৬ কম্পোনেন্ট)' : 'Source: /data/*.csv (134 Projects, 536 Components)'}
           </span>
         </div>
       </footer>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 
