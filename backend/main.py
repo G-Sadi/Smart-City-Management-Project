@@ -53,12 +53,13 @@ from ai_service import generate_ai_advisor_response, get_ai_status, stream_ai_ad
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("smart_city_api")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./smart_city.db")
-SECRET_KEY = os.getenv("SECRET_KEY", "smart-city-planning-secret-key-2026-super-secure")
-ALGORITHM = "HS256"
-# Determine DATA_DIR reliably
+# Determine Directories reliably
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DEFAULT_DB_PATH = os.path.join(BASE_DIR, "smart_city.db").replace("\\", "/")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
+SECRET_KEY = os.getenv("SECRET_KEY", "smart-city-planning-secret-key-2026-super-secure")
+ALGORITHM = "HS256"
 DATA_DIR = os.getenv("DATA_DIR")
 if not DATA_DIR or not os.path.exists(DATA_DIR):
     possible_paths = [

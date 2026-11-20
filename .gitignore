@@ -1,11 +1,16 @@
-# Python
+# Python & Virtual Environments
 venv/
 backend/venv/
 __pycache__/
+*/__pycache__/
+**/.pytest_cache/
+.pytest_cache/
+backend/.pytest_cache/
 *.py[cod]
 *$py.class
 *.sqlite
 *.db
+smart_city.db
 backend/smart_city.db
 backend/test_smart_city.db
 
