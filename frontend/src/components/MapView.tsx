@@ -560,23 +560,25 @@ export const MapView: React.FC<MapViewProps> = ({
             className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] relative"
             style={{ display: viewMode === '3d' ? 'block' : 'none' }}
           >
-            <Suspense
-              fallback={
-                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
-                  <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs font-mono text-cyan-400">Loading 3D Digital Twin Engine (Three.js)...</p>
-                </div>
-              }
-            >
-              <DigitalTwin3D
-                projects={filteredProjects}
-                components={allComponents}
-                selectedProjectId={selectedProjectId}
-                onSelectProject={onSelectProject}
-                isDark={isDark}
-                isActive={viewMode === '3d'}
-              />
-            </Suspense>
+            {viewMode === '3d' && (
+              <Suspense
+                fallback={
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
+                    <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-xs font-mono text-cyan-400">Loading 3D Digital Twin Engine (Three.js)...</p>
+                  </div>
+                }
+              >
+                <DigitalTwin3D
+                  projects={filteredProjects}
+                  components={allComponents}
+                  selectedProjectId={selectedProjectId}
+                  onSelectProject={onSelectProject}
+                  isDark={isDark}
+                  isActive={true}
+                />
+              </Suspense>
+            )}
           </div>
         </div>
 

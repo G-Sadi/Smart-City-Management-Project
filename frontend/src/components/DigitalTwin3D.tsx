@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Project, ComponentItem, ProjectRiskForecast } from '../types';
 import { calculateProjectRiskForecast } from '../riskEngine';
 import {
   RotateCcw, Eye, Layers, Compass, Zap, AlertTriangle, ShieldCheck,
-  ZoomIn, ZoomOut, Maximize2, X
+  ZoomIn, ZoomOut, Maximize2, X, RefreshCw
 } from 'lucide-react';
 
 interface DigitalTwin3DProps {
@@ -17,15 +17,26 @@ interface DigitalTwin3DProps {
   isActive?: boolean;
 }
 
+interface ProjectPosition {
+  pos: THREE.Vector3;
+  height: number;
+  radius: number;
+  color: number;
+  emissive: number;
+  tier: string;
+}
+
 export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
-  projects,
-  components,
+  projects = [],
+  components = [],
   selectedProjectId,
   onSelectProject,
   isDark = true,
   isActive = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [webGLError, setWebGLError] = useState<string | null>(null);
+
   const [hoveredProject, setHoveredProject] = useState<{
     project: Project;
     risk: ProjectRiskForecast;
@@ -33,99 +44,161 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     screenY: number;
   } | null>(null);
 
-  const [showArcs, setShowArcs] = useState(true);
-  const [showZones, setShowZones] = useState(true);
-
-  // Precompute project risks for fast coloring
+  // Precompute project risks for fast status mapping
   const projectRisks = useMemo(() => {
     const map = new Map<string, ProjectRiskForecast>();
     projects.forEach(p => {
-      const comps = components.filter(c => c.project_id === p.project_id);
+      if (!p || !p.project_id) return;
+      const comps = components.filter(c => c && c.project_id === p.project_id);
       map.set(p.project_id, calculateProjectRiskForecast(p, comps));
     });
     return map;
   }, [projects, components]);
 
-  // 1. Filter valid projects with geographic coordinates
+  // 1. Strict Sanitization: Guarantee finite valid numeric coordinates (Zero NaN Guarantee)
   const validProjects = useMemo(() => {
-    return projects.filter(p =>
-      typeof p.latitude === 'number' && !isNaN(p.latitude) && p.latitude >= -90 && p.latitude <= 90 &&
-      typeof p.longitude === 'number' && !isNaN(p.longitude) && p.longitude >= -180 && p.longitude <= 180
-    );
+    return projects.filter(p => {
+      if (!p) return false;
+      const lat = Number(p.latitude);
+      const lng = Number(p.longitude);
+      return (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180
+      );
+    });
   }, [projects]);
 
-  // 2. Compute dynamic geographic bounding box of the active dataset
+  // 2. Compute dynamic geographic bounding box across valid dataset
   const geoBounds = useMemo(() => {
     if (validProjects.length === 0) {
       return {
-        minLat: 23.6, maxLat: 23.9, minLng: 90.4, maxLng: 90.6,
-        centerLat: 23.75, centerLng: 90.52,
-        spanLat: 0.3, spanLng: 0.2
+        minLat: 23.6,
+        maxLat: 23.9,
+        minLng: 90.4,
+        maxLng: 90.6,
+        centerLat: 23.75,
+        centerLng: 90.52,
+        spanLat: 0.3,
+        spanLng: 0.2,
       };
     }
     let minLat = Infinity, maxLat = -Infinity;
     let minLng = Infinity, maxLng = -Infinity;
+
     validProjects.forEach(p => {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
+      const lat = Number(p.latitude);
+      const lng = Number(p.longitude);
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
     });
+
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
     const spanLat = Math.max(0.005, maxLat - minLat);
     const spanLng = Math.max(0.005, maxLng - minLng);
+
     return { minLat, maxLat, minLng, maxLng, centerLat, centerLng, spanLat, spanLng };
   }, [validProjects]);
 
-  // 3. Normalization scale: maps full dataset onto ~75 scene units in XZ plane
+  // 3. Normalization scale: maps dataset cleanly within ~75 scene units in XZ plane
   const WORLD_SPAN = 75.0;
   const coordScale = useMemo(() => {
     const maxSpan = Math.max(geoBounds.spanLat, geoBounds.spanLng);
     return WORLD_SPAN / maxSpan;
   }, [geoBounds]);
 
-  // 4. Calculate 3D positions with spiral offset for co-located projects
+  // 4. Color-Coding Helper according to visual encoding requirements
+  const getVisualEncoding = useCallback((p: Project, risk?: ProjectRiskForecast) => {
+    // Delayed / Critical -> Crimson (#e11d48)
+    if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
+      return {
+        color: 0xe11d48,
+        emissive: 0x9f1239,
+        tier: 'Delayed / Critical',
+      };
+    }
+    // Elevated Risk / Watch -> Amber (#f59e0b)
+    if (risk?.risk_tier === 'Elevated') {
+      return {
+        color: 0xf59e0b,
+        emissive: 0xb45309,
+        tier: 'Elevated Risk / Watch',
+      };
+    }
+    // Completed / Approved -> Cyan/Blue (#0ea5e9)
+    if (p.status === 'Completed' || p.status === 'Approved') {
+      return {
+        color: 0x0ea5e9,
+        emissive: 0x0284c7,
+        tier: 'Completed / Approved',
+      };
+    }
+    // Running / Normal -> Emerald (#10b981)
+    return {
+      color: 0x10b981,
+      emissive: 0x047857,
+      tier: 'Running / Normal',
+    };
+  }, []);
+
+  // 5. Precompute 3D Project Positions with spiral clustering for co-located projects
   const projectPositions = useMemo(() => {
-    const map = new Map<string, { pos: THREE.Vector3; height: number; radius: number }>();
+    const map = new Map<string, ProjectPosition>();
     const clusterMap = new Map<string, Project[]>();
 
     validProjects.forEach(p => {
-      const key = `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`;
+      const lat = Number(p.latitude);
+      const lng = Number(p.longitude);
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
       if (!clusterMap.has(key)) clusterMap.set(key, []);
       clusterMap.get(key)!.push(p);
     });
 
     clusterMap.forEach(cluster => {
       cluster.forEach((p, index) => {
-        const baseX = (p.longitude - geoBounds.centerLng) * coordScale;
-        const baseZ = -(p.latitude - geoBounds.centerLat) * coordScale;
+        const lat = Number(p.latitude);
+        const lng = Number(p.longitude);
+        const baseX = (lng - geoBounds.centerLng) * coordScale;
+        const baseZ = -(lat - geoBounds.centerLat) * coordScale;
 
         let finalX = baseX;
         let finalZ = baseZ;
 
+        // Spread co-located towers radially so none overlap
         if (cluster.length > 1 && index > 0) {
-          const radius = Math.min(3.2, 0.95 * Math.sqrt(index));
+          const radius = Math.min(3.5, 0.95 * Math.sqrt(index));
           const angle = index * 2.39996;
           finalX += radius * Math.cos(angle);
           finalZ += radius * Math.sin(angle);
         }
 
-        const height = Math.max(2.4, Math.min(14.0, (p.cost / 30.0) * 4.0 + 2.5));
-        const radius = 0.85;
+        const cost = Number(p.cost) || 10;
+        const height = Math.max(2.8, Math.min(15.0, (cost / 25.0) * 4.0 + 2.8));
+        const radius = 0.9;
+        const risk = projectRisks.get(p.project_id);
+        const encoding = getVisualEncoding(p, risk);
 
         map.set(p.project_id, {
           pos: new THREE.Vector3(finalX, height / 2, finalZ),
           height,
-          radius
+          radius,
+          color: encoding.color,
+          emissive: encoding.emissive,
+          tier: encoding.tier,
         });
       });
     });
 
     return map;
-  }, [validProjects, geoBounds, coordScale]);
+  }, [validProjects, geoBounds, coordScale, projectRisks, getVisualEncoding]);
 
-  // 5. Dynamically derive real municipal zones from the dataset
+  // 6. Dynamically derive real municipal zone bases from the actual active dataset
   const derivedZones = useMemo(() => {
     const locMap = new Map<string, { lats: number[]; lngs: number[]; count: number; cost: number }>();
     validProjects.forEach(p => {
@@ -134,10 +207,10 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         locMap.set(loc, { lats: [], lngs: [], count: 0, cost: 0 });
       }
       const entry = locMap.get(loc)!;
-      entry.lats.push(p.latitude);
-      entry.lngs.push(p.longitude);
+      entry.lats.push(Number(p.latitude));
+      entry.lngs.push(Number(p.longitude));
       entry.count += 1;
-      entry.cost += p.cost || 0;
+      entry.cost += Number(p.cost) || 0;
     });
 
     const ZONE_PALETTE = [
@@ -177,7 +250,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         radius: Math.max(4.0, Math.min(22.0, maxDist + 2.5)),
         color: ZONE_PALETTE[cIdx % ZONE_PALETTE.length],
         count: data.count,
-        cost: data.cost
+        cost: data.cost,
       });
       cIdx++;
     });
@@ -185,7 +258,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     return zones;
   }, [validProjects, geoBounds, coordScale]);
 
-  // Three.js refs for interaction and camera control
+  // Three.js References for Animation, Camera HUD & Meshes
   const sceneStateRef = useRef<{
     resetCamera: () => void;
     zoomCamera: (factor: number) => void;
@@ -194,67 +267,87 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
 
   const pillarMeshesRef = useRef<THREE.Mesh[]>([]);
   const selectionBeaconsRef = useRef<Map<string, THREE.Object3D>>(new Map());
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
 
-  // Main Three.js Scene Setup
+  // Main Three.js Scene Setup & Lifecycle
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    let width = container.clientWidth || 800;
-    let height = container.clientHeight || 550;
+    // Safety: ensure container has non-zero geometry before creating WebGL context
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || container.clientWidth || 800;
+    const height = rect.height || container.clientHeight || 550;
 
-    // 1. Scene & Linear Clear Fog
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    setWebGLError(null);
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile,
+        alpha: false,
+        powerPreference: 'high-performance',
+      });
+      renderer.setSize(width, height, false);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = !isMobile;
+      if (!isMobile) {
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      }
+    } catch (err: any) {
+      console.error('Failed to create WebGLRenderer:', err);
+      setWebGLError(err?.message || 'WebGL context initialization failed');
+      return;
+    }
+
+    // Clear any stale children/canvas and mount the fresh canvas
+    container.innerHTML = '';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
+    container.appendChild(renderer.domElement);
+
+    // 1. Scene & Atmosphere (Deep Midnight-Navy + Subtle Linear Fog)
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isDark ? 0x070b14 : 0xf8fafc);
-    // Linear fog starts at 120 and ends at 380: zero fog in the 0-90 world radius
-    scene.fog = new THREE.Fog(isDark ? 0x070b14 : 0xf8fafc, 120, 380);
+    scene.background = new THREE.Color(isDark ? 0x060b16 : 0xf8fafc);
+    // Subtle fog at perimeter: 120 starts, 380 ends. ZERO fog in active 0-90 range
+    scene.fog = new THREE.Fog(isDark ? 0x060b16 : 0xf8fafc, 120, 380);
 
     // 2. Camera Setup
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
 
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-
-    // 3. WebGL Renderer
-    const renderer = new THREE.WebGLRenderer({
-      antialias: !isMobile,
-      alpha: false,
-      powerPreference: 'high-performance'
-    });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 2));
-    renderer.shadowMap.enabled = !isMobile;
-    if (!isMobile) {
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    }
-    container.innerHTML = '';
-    container.style.touchAction = 'none';
-    container.appendChild(renderer.domElement);
-
-    // 4. OrbitControls with smooth damping
+    // 3. OrbitControls with Smooth Damping
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
+    controls.dampingFactor = 0.05;
     controls.screenSpacePanning = true;
-    controls.minDistance = 10;
-    controls.maxDistance = 250;
+    controls.minDistance = 8;
+    controls.maxDistance = 260;
     controls.maxPolarAngle = Math.PI / 2.05;
     controls.minPolarAngle = 0.05;
 
-    // 5. Multi-Source Balanced High-Contrast Lighting
+    // 4. Multi-Source High-Contrast Lighting Setup
     const hemiLight = new THREE.HemisphereLight(
-      isDark ? 0xcfedff : 0xffffff,
-      isDark ? 0x0f172a : 0x334155,
-      isDark ? 1.4 : 1.2
+      isDark ? 0xdbeafe : 0xffffff,
+      isDark ? 0x060b16 : 0x334155,
+      isDark ? 1.5 : 1.3
     );
     scene.add(hemiLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.95 : 1.1);
+    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 1.05 : 1.15);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, isDark ? 2.4 : 2.6);
-    keyLight.position.set(60, 90, 50);
-    keyLight.castShadow = !isMobile;
-    if (!isMobile) {
+    const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 640;
+    const keyLight = new THREE.DirectionalLight(0xffffff, isDark ? 2.5 : 2.7);
+    keyLight.position.set(65, 95, 50);
+    keyLight.castShadow = !isMobileDevice;
+    if (!isMobileDevice) {
       keyLight.shadow.mapSize.width = 1024;
       keyLight.shadow.mapSize.height = 1024;
       keyLight.shadow.camera.near = 0.5;
@@ -267,46 +360,46 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     }
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, isDark ? 1.3 : 1.0);
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, isDark ? 1.4 : 1.1);
     fillLight.position.set(-60, 45, -50);
     scene.add(fillLight);
 
     const rimLight = new THREE.DirectionalLight(0xf59e0b, isDark ? 0.9 : 0.7);
-    rimLight.position.set(10, 35, -70);
+    rimLight.position.set(10, 30, -70);
     scene.add(rimLight);
 
-    // Moving beacon light for dynamic ambient reflection
-    const beaconLight = new THREE.PointLight(0x06b6d4, 1.2, 90);
-    beaconLight.position.set(0, 20, 0);
+    // Orbiting beacon light
+    const beaconLight = new THREE.PointLight(0x06b6d4, 1.4, 120);
+    beaconLight.position.set(0, 25, 0);
     scene.add(beaconLight);
 
-    // 6. Ground Plane & Grid Platform
-    const groundSize = 150;
+    // 5. Urban Ground Floor & Luminous Grid
+    const groundSize = 160;
     const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: isDark ? 0x0b1120 : 0xe2e8f0,
-      roughness: 0.75,
-      metalness: 0.25,
+      color: isDark ? 0x0b1329 : 0xe2e8f0,
+      roughness: 0.8,
+      metalness: 0.2,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
-    ground.receiveShadow = !isMobile;
+    ground.receiveShadow = !isMobileDevice;
     scene.add(ground);
 
     const grid = new THREE.GridHelper(
       groundSize,
-      50,
+      40,
       isDark ? 0x0284c7 : 0x0284c7,
-      isDark ? 0x1e293b : 0xcbd5e1
+      isDark ? 0x172554 : 0xcbd5e1
     );
     grid.position.y = 0;
     scene.add(grid);
 
-    // 7. Dynamic Municipal Zone Platforms
+    // 6. Dynamic Municipal Zone Platforms
     const zoneGroup = new THREE.Group();
     derivedZones.forEach(z => {
-      // Outer glowing ring
+      // Outer illuminated ground ring
       const ringGeo = new THREE.RingGeometry(z.radius * 0.92, z.radius, 36);
       const ringMat = new THREE.MeshBasicMaterial({
         color: z.color,
@@ -330,12 +423,12 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       });
       const pad = new THREE.Mesh(padGeo, padMat);
       pad.position.set(z.x, 0.1, z.z);
-      pad.receiveShadow = !isMobile;
+      pad.receiveShadow = !isMobileDevice;
       zoneGroup.add(pad);
     });
     scene.add(zoneGroup);
 
-    // 8. 3D Project Infrastructure Towers
+    // 7. 3D Architectural Project Towers (Color-Coded to Legend)
     const pillarGroup = new THREE.Group();
     const pillarMeshes: THREE.Mesh[] = [];
     const selectionMap = new Map<string, THREE.Object3D>();
@@ -343,64 +436,46 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     validProjects.forEach(p => {
       const posData = projectPositions.get(p.project_id);
       if (!posData) return;
-      const { pos, height, radius } = posData;
+      const { pos, height, radius, color, emissive } = posData;
       const risk = projectRisks.get(p.project_id);
-
-      let colorHex = 0x10b981; // Running = Emerald Green
-      let emissiveHex = 0x047857;
-
-      if (p.status === 'Completed') {
-        colorHex = 0x38bdf8; // Sky Blue
-        emissiveHex = 0x0284c7;
-      } else if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
-        colorHex = 0xf43f5e; // Rose Red
-        emissiveHex = 0xbe123c;
-      } else if (risk?.risk_tier === 'Elevated') {
-        colorHex = 0xf59e0b; // Amber Gold
-        emissiveHex = 0xb45309;
-      } else if (p.status === 'Approved') {
-        colorHex = 0xa855f7; // Purple
-        emissiveHex = 0x7e22ce;
-      }
-
       const isSelected = selectedProjectId === p.project_id;
 
       // Architectural 8-sided faceted prism tower
-      const towerGeo = new THREE.CylinderGeometry(radius * 0.8, radius * 1.05, height, 8);
+      const towerGeo = new THREE.CylinderGeometry(radius * 0.75, radius * 1.05, height, 8);
       const towerMat = new THREE.MeshStandardMaterial({
-        color: isSelected ? 0x38bdf8 : colorHex,
-        emissive: isSelected ? 0x38bdf8 : emissiveHex,
-        emissiveIntensity: isSelected ? 0.95 : 0.45,
+        color: isSelected ? 0x38bdf8 : color,
+        emissive: isSelected ? 0x38bdf8 : emissive,
+        emissiveIntensity: isSelected ? 1.0 : 0.5,
         roughness: 0.25,
         metalness: 0.4,
       });
 
       const pillar = new THREE.Mesh(towerGeo, towerMat);
       pillar.position.set(pos.x, height / 2, pos.z);
-      pillar.castShadow = !isMobile;
-      pillar.receiveShadow = !isMobile;
+      pillar.castShadow = !isMobileDevice;
+      pillar.receiveShadow = !isMobileDevice;
       pillar.userData = {
         project: p,
         risk,
         height,
         radius,
-        baseColor: colorHex,
-        baseEmissive: emissiveHex
+        baseColor: color,
+        baseEmissive: emissive,
       };
 
       pillarGroup.add(pillar);
       pillarMeshes.push(pillar);
 
       // Top glowing spherical obstruction beacon
-      const beaconGeo = new THREE.SphereGeometry(radius * 0.75, 12, 12);
+      const beaconGeo = new THREE.SphereGeometry(radius * 0.7, 12, 12);
       const beaconMat = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0xffffff : colorHex,
+        color: isSelected ? 0xffffff : color,
       });
       const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-      beacon.position.set(pos.x, height + 0.3, pos.z);
+      beacon.position.set(pos.x, height + 0.35, pos.z);
       pillarGroup.add(beacon);
 
-      // Metallic foundation disk
+      // Metallic foundation disc
       const padGeo = new THREE.CylinderGeometry(radius * 1.35, radius * 1.45, 0.2, 12);
       const padMat = new THREE.MeshStandardMaterial({
         color: isDark ? 0x1e293b : 0x94a3b8,
@@ -409,31 +484,29 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       });
       const pad = new THREE.Mesh(padGeo, padMat);
       pad.position.set(pos.x, 0.1, pos.z);
-      pad.receiveShadow = !isMobile;
+      pad.receiveShadow = !isMobileDevice;
       pillarGroup.add(pad);
 
-      // Delayed or Critical ground indicator ring
-      if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
-        const warnGeo = new THREE.RingGeometry(radius * 1.45, radius * 1.85, 24);
-        const warnMat = new THREE.MeshBasicMaterial({
-          color: 0xf43f5e,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.65,
-        });
-        const warnRing = new THREE.Mesh(warnGeo, warnMat);
-        warnRing.rotation.x = -Math.PI / 2;
-        warnRing.position.set(pos.x, 0.05, pos.z);
-        pillarGroup.add(warnRing);
-      }
+      // Base illuminated ring matching project status
+      const baseRingGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.7, 24);
+      const baseRingMat = new THREE.MeshBasicMaterial({
+        color: color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.65,
+      });
+      const baseRing = new THREE.Mesh(baseRingGeo, baseRingMat);
+      baseRing.rotation.x = -Math.PI / 2;
+      baseRing.position.set(pos.x, 0.05, pos.z);
+      pillarGroup.add(baseRing);
 
-      // Selection Halo Ring
-      const selectHaloGeo = new THREE.RingGeometry(radius * 1.7, radius * 2.3, 28);
+      // Selected Glowing Cyan Halo Ring
+      const selectHaloGeo = new THREE.RingGeometry(radius * 1.8, radius * 2.5, 32);
       const selectHaloMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: isSelected ? 0.85 : 0.0,
+        opacity: isSelected ? 0.9 : 0.0,
       });
       const selectHalo = new THREE.Mesh(selectHaloGeo, selectHaloMat);
       selectHalo.rotation.x = -Math.PI / 2;
@@ -447,7 +520,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     pillarMeshesRef.current = pillarMeshes;
     selectionBeaconsRef.current = selectionMap;
 
-    // 9. Curved 3D DAG Dependency Arcs
+    // 8. Curved 3D DAG Dependency Arcs
     const arcGroup = new THREE.Group();
     const compMap = new Map(components.map(c => [c.component_id, c]));
     const projectPairs = new Set<string>();
@@ -484,7 +557,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     });
     scene.add(arcGroup);
 
-    // 10. Auto-Framing using THREE.Box3 bounding calculation
+    // 9. Auto-Framing using Validated THREE.Box3 Bounds
     const box = new THREE.Box3();
     if (pillarMeshes.length > 0) {
       box.setFromObject(pillarGroup);
@@ -503,7 +576,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     const maxDim = Math.max(size.x, size.z, 28);
     const fov = camera.fov * (Math.PI / 180);
     let camDist = (maxDim / 2) / Math.tan(fov / 2);
-    camDist = Math.max(48, camDist * 1.25);
+    camDist = Math.max(45, camDist * 1.25);
 
     const defaultTarget = new THREE.Vector3(center.x, 2.0, center.z);
     const defaultCamPos = new THREE.Vector3(
@@ -516,17 +589,17 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     controls.target.copy(defaultTarget);
     controls.update();
 
-    // 11. Raycaster for Hover & Selection
+    // 10. Raycaster for Hover & Selection
     const raycaster = new THREE.Raycaster();
     const mousePos = new THREE.Vector2();
 
     const onPointerMove = (e: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
+      const bRect = container.getBoundingClientRect();
       const mouseX = e.clientX;
       const mouseY = e.clientY;
 
-      mousePos.x = ((mouseX - rect.left) / rect.width) * 2 - 1;
-      mousePos.y = -((mouseY - rect.top) / rect.height) * 2 + 1;
+      mousePos.x = ((mouseX - bRect.left) / bRect.width) * 2 - 1;
+      mousePos.y = -((mouseY - bRect.top) / bRect.height) * 2 + 1;
 
       raycaster.setFromCamera(mousePos, camera);
       const intersects = raycaster.intersectObjects(pillarMeshes, false);
@@ -537,8 +610,8 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         setHoveredProject({
           project,
           risk,
-          screenX: mouseX - rect.left,
-          screenY: mouseY - rect.top,
+          screenX: mouseX - bRect.left,
+          screenY: mouseY - bRect.top,
         });
         container.style.cursor = 'pointer';
       } else {
@@ -548,9 +621,9 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     };
 
     const onClick = (e: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      mousePos.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mousePos.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const bRect = container.getBoundingClientRect();
+      mousePos.x = ((e.clientX - bRect.left) / bRect.width) * 2 - 1;
+      mousePos.y = -((e.clientY - bRect.top) / bRect.height) * 2 + 1;
 
       raycaster.setFromCamera(mousePos, camera);
       const intersects = raycaster.intersectObjects(pillarMeshes, false);
@@ -577,7 +650,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       zoomCamera: (factor: number) => {
         const offset = camera.position.clone().sub(controls.target);
         offset.multiplyScalar(factor);
-        offset.clampLength(12, 220);
+        offset.clampLength(10, 240);
         camera.position.copy(controls.target).add(offset);
         controls.update();
       },
@@ -588,31 +661,36 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
           camera.position.set(posData.pos.x + 18, posData.pos.y + 16, posData.pos.z + 20);
           controls.update();
         }
-      }
+      },
     };
 
-    // 12. Responsive Resize
+    // 11. Responsive ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
       if (!container) return;
-      width = container.clientWidth;
-      height = container.clientHeight;
-      if (width === 0 || height === 0) return;
-      camera.aspect = width / height;
+      const curW = container.clientWidth;
+      const curH = container.clientHeight;
+      if (curW <= 0 || curH <= 0) return;
+      camera.aspect = curW / curH;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
+      renderer.setSize(curW, curH, false);
+      renderer.render(scene, camera);
     });
     resizeObserver.observe(container);
 
-    // 13. Render & Animation Loop
+    // 12. Render & Animation Loop (Guaranteed First-Frame Render)
     let animationFrameId: number;
     let isRunning = true;
     const clock = new THREE.Clock();
+
+    // Render immediately on mount
+    controls.update();
+    renderer.render(scene, camera);
 
     const animate = () => {
       if (!isRunning) return;
       animationFrameId = requestAnimationFrame(animate);
 
-      if (isActive) {
+      if (isActiveRef.current) {
         const elapsedTime = clock.getElapsedTime();
         beaconLight.position.x = Math.sin(elapsedTime * 0.45) * 20;
         beaconLight.position.z = Math.cos(elapsedTime * 0.45) * 20;
@@ -623,7 +701,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     };
     animate();
 
-    // 14. Clean Cleanup on Unmount
+    // 13. Clean Cleanup on Unmount
     return () => {
       isRunning = false;
       cancelAnimationFrame(animationFrameId);
@@ -648,17 +726,23 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [validProjects, components, isDark, coordScale, geoBounds, projectPositions, derivedZones]);
+  }, [validProjects, components, isDark, coordScale, geoBounds, projectPositions, derivedZones, onSelectProject]);
 
-  // Highlight and focus on selected project without rebuilding the entire scene
+  // Synchronize Project Selection without Rebuilding the WebGL Scene
   useEffect(() => {
-    if (!selectedProjectId) return;
+    if (!selectedProjectId) {
+      selectionBeaconsRef.current.forEach(halo => {
+        halo.visible = false;
+      });
+      return;
+    }
+
     pillarMeshesRef.current.forEach(mesh => {
       const isSelected = mesh.userData?.project?.project_id === selectedProjectId;
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat) {
         mat.emissive.setHex(isSelected ? 0x38bdf8 : mesh.userData.baseEmissive);
-        mat.emissiveIntensity = isSelected ? 0.95 : 0.45;
+        mat.emissiveIntensity = isSelected ? 1.0 : 0.5;
       }
     });
 
@@ -676,17 +760,35 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       {/* 3D WebGL Canvas Container */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
+      {/* WebGL Failure Fallback UI */}
+      {webGLError && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-slate-950/95 text-center text-slate-300 space-y-3">
+          <AlertTriangle className="w-10 h-10 text-amber-400" />
+          <h4 className="text-sm font-bold text-white">WebGL Initialization Required</h4>
+          <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+            {webGLError}. Please ensure hardware acceleration is enabled in your browser settings.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition flex items-center space-x-1.5"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reload Application</span>
+          </button>
+        </div>
+      )}
+
       {/* Floating 3D Navigation Controls Bar */}
       <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-slate-300 shadow-xl z-20">
         <button
-          onClick={() => sceneStateRef.current?.zoomCamera(0.85)}
+          onClick={() => sceneStateRef.current?.zoomCamera(0.82)}
           title="Zoom In (+)"
           className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
-          onClick={() => sceneStateRef.current?.zoomCamera(1.15)}
+          onClick={() => sceneStateRef.current?.zoomCamera(1.22)}
           title="Zoom Out (-)"
           className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
         >
@@ -713,7 +815,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
             <span>Running / Normal</span>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-sm" />
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-sm" />
             <span>Completed / Approved</span>
           </div>
           <div className="flex items-center space-x-2">
@@ -721,7 +823,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
             <span>Elevated Risk / Watch</span>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shadow-sm animate-pulse" />
             <span>Delayed / Critical</span>
           </div>
         </div>
