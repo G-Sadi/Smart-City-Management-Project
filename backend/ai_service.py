@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from dotenv import load_dotenv
 
-from models import Project, Proposal, Component, Constraint, CitizenFeedback
+from models import Project, Proposal, Component, Constraint, CitizenFeedback, CivicIssue
 from scheduler_engine import RCPSPScheduler
 
 # Load backend/.env first, then root .env if present
@@ -154,6 +154,19 @@ def get_compact_telemetry_snapshot(db: Session, scheduler: RCPSPScheduler) -> Di
         for l in loc_utils
     ]
 
+    # Citizen Civic Issues Grounding
+    open_issues = 0
+    issues_summary = []
+    try:
+        open_issues = db.query(CivicIssue).filter(CivicIssue.status != "Remediated").count()
+        top_issues = db.query(CivicIssue).order_by(CivicIssue.upvotes.desc()).limit(3).all()
+        issues_summary = [
+            {"category": i.category, "location": i.location_name, "upvotes": i.upvotes, "desc": i.description[:80]}
+            for i in top_issues
+        ]
+    except Exception:
+        pass
+
     return {
         "city": "Dhaka Eastern Expansion Sub-Corridors",
         "total_projects": tot_projects,
@@ -164,6 +177,8 @@ def get_compact_telemetry_snapshot(db: Session, scheduler: RCPSPScheduler) -> Di
         "agency_utilization": agency_summary,
         "zone_saturation": zone_summary,
         "top_predecessor_blockers": top_blockers,
+        "open_civic_issues": open_issues,
+        "top_citizen_hazards": issues_summary,
         "blackout_window": "Monsoon: June 15 - August 15"
     }
 

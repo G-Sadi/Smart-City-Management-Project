@@ -67,6 +67,7 @@ class Project(Base):
     agency = relationship("Agency", back_populates="projects")
     components = relationship("Component", back_populates="project", cascade="all, delete-orphan")
     feedbacks = relationship("CitizenFeedback", back_populates="project", cascade="all, delete-orphan")
+    civic_issues = relationship("CivicIssue", back_populates="project", cascade="all, delete-orphan")
 
 
 class Proposal(Base):
@@ -148,3 +149,36 @@ class IngestionAudit(Base):
     total_bad_rows = Column(Integer, default=0)
     summary_json = Column(Text, nullable=True)  # JSON breakdown
     bad_rows_log = Column(Text, nullable=True)  # Detailed log with file, row #, reason
+
+
+class CivicIssue(Base):
+    __tablename__ = "civic_issues"
+
+    id = Column(String(50), primary_key=True, index=True)
+    project_id = Column(String(50), ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(100), nullable=False)  # 'Traffic Bottleneck', 'Road Damage', 'Waterlogging', 'Work Stalled', 'Safety Hazard'
+    description = Column(Text, nullable=False)
+    citizen_name = Column(String(100), default="Anonymous Citizen")
+    citizen_phone = Column(String(50), nullable=True)
+    location_name = Column(String(100), nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    photo_url = Column(Text, nullable=True)  # Base64 data URL
+    upvotes = Column(Integer, default=1)
+    status = Column(String(50), default="Open", index=True)  # 'Open', 'Under Investigation', 'Remediated'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="civic_issues")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    action = Column(String(100), nullable=False)
+    actor = Column(String(100), nullable=False)
+    details = Column(Text, nullable=False)
+    prev_hash = Column(String(64), nullable=False)
+    hash = Column(String(64), nullable=False)
+

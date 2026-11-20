@@ -1,7 +1,7 @@
 import React from 'react';
-import { 
-  X, ShieldCheck, CheckCircle2, Building2, User, 
-  ArrowRight, Landmark, HardHat, Sparkles 
+import {
+  X, ShieldCheck, CheckCircle2, Building2, User,
+  ArrowRight, Landmark, HardHat, Sparkles
 } from 'lucide-react';
 import { User as UserType } from '../types';
 import civicgridLogo from '../assets/civicgrid-logo.png';
@@ -91,7 +91,7 @@ export const QuickLoginModal: React.FC<QuickLoginModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div 
+      <div
         className="bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >

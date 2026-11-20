@@ -3,7 +3,8 @@ import {
   ConstraintItem, IngestionAudit, AnalyticsOverview,
   PlannedVsProjectedSeries, LocationDistribution,
   AIAdvisorResponse, AIStatusResponse, TimeframeSuggestion, User,
-  AlgorithmBenchmark, DependencyDAGData, DBStatus
+  AlgorithmBenchmark, DependencyDAGData, DBStatus,
+  ProjectRiskForecast, CivicIssue, AuditChainEntry, AuditVerificationResult, ScaleBenchmarkResult
 } from './types';
 import { browserEngine } from './browserEngine';
 
@@ -593,6 +594,110 @@ export const api = {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  },
+
+  getPredictiveRisks: async (projectId?: string): Promise<ProjectRiskForecast[]> => {
+    if (await checkBackendHealth()) {
+      try {
+        const q = projectId ? `?project_id=${projectId}` : '';
+        const res = await request<ProjectRiskForecast[] | ProjectRiskForecast>(`/predictive/risks${q}`);
+        return Array.isArray(res) ? res : [res];
+      } catch (err) {
+        console.warn('Backend getPredictiveRisks failed, falling back to browser engine', err);
+      }
+    }
+    if (projectId) {
+      const single = browserEngine.getProjectRisk(projectId);
+      return single ? [single] : [];
+    }
+    return browserEngine.getAllProjectRisks();
+  },
+
+  getCivicIssues: async (projectId?: string): Promise<CivicIssue[]> => {
+    if (await checkBackendHealth()) {
+      try {
+        const q = projectId ? `?project_id=${projectId}` : '';
+        return await request<CivicIssue[]>(`/civic-issues${q}`);
+      } catch (err) {
+        console.warn('Backend getCivicIssues failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getCivicIssues(projectId);
+  },
+
+  createCivicIssue: async (data: Partial<CivicIssue>): Promise<CivicIssue> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<CivicIssue>('/civic-issues', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (err) {
+        console.warn('Backend createCivicIssue failed, falling back to browser engine', err);
+      }
+    }
+    return await browserEngine.createCivicIssue(data);
+  },
+
+  upvoteCivicIssue: async (issueId: string): Promise<{ id: string; upvotes: number; message: string }> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<{ id: string; upvotes: number; message: string }>(`/civic-issues/${issueId}/upvote`, {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.warn('Backend upvoteCivicIssue failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.upvoteCivicIssue(issueId);
+  },
+
+  getAuditChain: async (): Promise<AuditChainEntry[]> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<AuditChainEntry[]>('/governance/audit-chain');
+      } catch (err) {
+        console.warn('Backend getAuditChain failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getAuditChain();
+  },
+
+  verifyAuditChain: async (): Promise<AuditVerificationResult> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<AuditVerificationResult>('/governance/verify-chain', {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.warn('Backend verifyAuditChain failed, falling back to browser engine', err);
+      }
+    }
+    return await browserEngine.verifyAuditChain();
+  },
+
+  runScaleBenchmark: async (): Promise<ScaleBenchmarkResult> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<ScaleBenchmarkResult>('/benchmark/scale', {
+          method: 'POST',
+        });
+      } catch (err) {
+        console.warn('Backend runScaleBenchmark failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.runScaleBenchmark();
+  },
+
+  getOpenApiSpec: async (): Promise<Record<string, any>> => {
+    if (await checkBackendHealth()) {
+      try {
+        return await request<Record<string, any>>('/openapi-spec');
+      } catch (err) {
+        console.warn('Backend getOpenApiSpec failed, falling back to browser engine', err);
+      }
+    }
+    return browserEngine.getOpenApiSpec();
   },
 
   exportSanitizationAuditCsv: async () => {

@@ -12,7 +12,7 @@ import { QuickLoginModal } from './components/QuickLoginModal';
 import { ExecutiveKpiRibbon } from './components/ExecutiveKpiRibbon';
 import { CommandPalette } from './components/CommandPalette';
 import { JudgeStressTestDrawer } from './components/JudgeStressTestDrawer';
-import { Project, Agency, AnalyticsOverview, User } from './types';
+import { Project, Agency, AnalyticsOverview, User, ComponentItem } from './types';
 import { api, subscribeBackendStatus, checkBackendHealth, subscribeDBChanges } from './api';
 import { useTheme } from './context/ThemeContext';
 import { Sliders, CheckCircle2 } from 'lucide-react';
@@ -21,6 +21,7 @@ export function App() {
   const { isDark, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<string>('map');
   const [projects, setProjects] = useState<Project[]>([]);
+  const [components, setComponents] = useState<ComponentItem[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -86,14 +87,16 @@ export function App() {
   // Main Data Loader
   const loadCoreData = async () => {
     try {
-      const [projData, agencyData, overviewData] = await Promise.all([
+      const [projData, agencyData, overviewData, compData] = await Promise.all([
         api.getProjects(),
         api.getAgencies(),
-        api.getAnalyticsOverview()
+        api.getAnalyticsOverview(),
+        api.getComponents()
       ]);
       setProjects(projData);
       setAgencies(agencyData);
       setOverview(overviewData);
+      setComponents(compData);
     } catch (err) {
       console.error('Error loading core dataset:', err);
     }
@@ -144,6 +147,7 @@ export function App() {
         {activeTab === 'map' && (
           <MapView
             projects={projects}
+            components={components}
             onSelectProject={(id) => setSelectedProjectId(id)}
             selectedProjectId={selectedProjectId}
           />

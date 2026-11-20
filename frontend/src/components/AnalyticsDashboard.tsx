@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, ComposedChart 
+  Tooltip, Legend, ResponsiveContainer, ComposedChart, ScatterChart, Scatter, ZAxis, Cell
 } from 'recharts';
 import { 
   TrendingUp, DollarSign, Calendar, Clock, CheckCircle2, 
   AlertTriangle, Download, RefreshCw, Layers, MapPin, Building2,
-  Printer, GitBranch, ArrowRight, ShieldCheck, FileSpreadsheet
+  Printer, GitBranch, ArrowRight, ShieldCheck, FileSpreadsheet, Gauge,
+  Activity, AlertCircle
 } from 'lucide-react';
-import { AnalyticsOverview, PlannedVsProjectedSeries, LocationDistribution, Agency, Project } from '../types';
+import { AnalyticsOverview, PlannedVsProjectedSeries, LocationDistribution, Agency, Project, ProjectRiskForecast } from '../types';
 import { api } from '../api';
 import { useTheme } from '../context/ThemeContext';
 import { AlgorithmProofBanner } from './AlgorithmProofBanner';
@@ -28,6 +29,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const [timelineSeries, setTimelineSeries] = useState<PlannedVsProjectedSeries[]>([]);
   const [locationDist, setLocationDist] = useState<LocationDistribution[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [risks, setRisks] = useState<ProjectRiskForecast[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Gantt filter state
@@ -39,12 +41,14 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     Promise.all([
       api.getPlannedVsProjected(),
       api.getLocationDistribution(),
-      api.getProjects()
+      api.getProjects(),
+      api.getPredictiveRisks(),
     ])
-      .then(([seriesData, locData, projData]) => {
+      .then(([seriesData, locData, projData, riskData]) => {
         setTimelineSeries(seriesData);
         setLocationDist(locData);
         setProjects(projData);
+        setRisks(riskData);
         setLoading(false);
       })
       .catch(err => {
@@ -52,6 +56,39 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
         setLoading(false);
       });
   }, []);
+
+  // Prepare data points for Scatter / Bubble Matrix
+  const scatterData = useMemo(() => {
+    return risks.map(r => {
+      const proj = projects.find(p => p.project_id === r.project_id);
+      const cost = proj?.cost || 10;
+      const overrunCrTk = Number((r.forecasted_final_cost - cost).toFixed(2));
+      return {
+        id: r.project_id,
+        name: r.name,
+        delay_prob: r.delay_probability_pct,
+        overrun_cr: Math.max(0, overrunCrTk),
+        cost: cost,
+        tier: r.risk_tier,
+        score: r.risk_score,
+        drivers: r.top_risk_drivers,
+        completion: proj?.completion || 0,
+      };
+    });
+  }, [risks, projects]);
+
+  const totalAtRiskBudget = useMemo(() => {
+    return Number(scatterData.reduce((acc, curr) => acc + curr.overrun_cr, 0).toFixed(1));
+  }, [scatterData]);
+
+  const avgDelayProb = useMemo(() => {
+    if (scatterData.length === 0) return 0;
+    return Math.round(scatterData.reduce((acc, curr) => acc + curr.delay_prob, 0) / scatterData.length);
+  }, [scatterData]);
+
+  const criticalCount = useMemo(() => {
+    return scatterData.filter(d => d.tier === 'Critical').length;
+  }, [scatterData]);
 
   const handleExportCsv = async () => {
     if (api.isBackendConnected()) {
@@ -284,6 +321,125 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Predictive Delay & Budget Overrun Matrix (ML-Style Risk Scoring) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+              <Gauge className="w-4 h-4 text-cyan-500" />
+              <span>Predictive Delay & Budget Overrun Risk Matrix</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Multi-factor forecasting comparing schedule slippage probability against fiscal exposure.
+            </p>
+          </div>
+
+          {/* Predictive Summary Badges */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 font-semibold flex items-center space-x-1">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>{criticalCount} Critical Vulnerabilities</span>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/40 font-semibold">
+              ৳{totalAtRiskBudget} Cr At-Risk Budget
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-900/40 font-semibold">
+              {avgDelayProb}% Avg Delay Prob
+            </span>
+          </div>
+        </div>
+
+        {/* Scatter / Bubble Plot */}
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={isDark ? 0.4 : 0.8} />
+              <XAxis 
+                type="number" 
+                dataKey="delay_prob" 
+                name="Delay Probability" 
+                unit="%" 
+                domain={[0, 100]}
+                tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} 
+                stroke={isDark ? '#475569' : '#cbd5e1'}
+                label={{ value: 'Delay Probability (%)', position: 'bottom', offset: 0, fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }}
+              />
+              <YAxis 
+                type="number" 
+                dataKey="overrun_cr" 
+                name="Cost Overrun" 
+                unit=" Cr" 
+                tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} 
+                stroke={isDark ? '#475569' : '#cbd5e1'}
+                label={{ value: 'Forecasted Overrun (Cr Tk)', angle: -90, position: 'left', offset: 5, fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }}
+              />
+              <ZAxis type="number" dataKey="cost" range={[60, 400]} name="Project Budget" unit=" Cr" />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="p-3 rounded-xl bg-slate-900 text-white border border-slate-700 shadow-2xl text-xs space-y-1.5 max-w-xs">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1">
+                          <span className="font-mono text-cyan-400 font-bold">{data.id}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            data.tier === 'Critical' ? 'bg-rose-950 text-rose-400' :
+                            data.tier === 'Elevated' ? 'bg-amber-950 text-amber-400' :
+                            'bg-emerald-950 text-emerald-400'
+                          }`}>
+                            {data.tier} Risk
+                          </span>
+                        </div>
+                        <h5 className="font-semibold text-slate-100">{data.name}</h5>
+                        <div className="grid grid-cols-2 gap-x-2 text-[11px] text-slate-300">
+                          <span>Delay Prob: <strong className="text-rose-400">{data.delay_prob}%</strong></span>
+                          <span>Overrun: <strong className="text-amber-400">৳{data.overrun_cr} Cr</strong></span>
+                          <span>Cost: ৳{data.cost} Cr</span>
+                          <span>Progress: {data.completion}%</span>
+                        </div>
+                        {data.drivers && data.drivers.length > 0 && (
+                          <div className="pt-1 border-t border-slate-800 text-[10px] text-slate-400">
+                            <strong>Driver:</strong> {data.drivers[0]}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Scatter name="Projects" data={scatterData}>
+                {scatterData.map((entry, index) => {
+                  let fillColor = '#10b981'; // Low
+                  if (entry.tier === 'Critical') fillColor = '#f43f5e';
+                  else if (entry.tier === 'Elevated') fillColor = '#f59e0b';
+                  return <Cell key={`cell-${index}`} fill={fillColor} fillOpacity={0.8} stroke="#ffffff" strokeWidth={1} />;
+                })}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Legend bar */}
+        <div className="flex items-center justify-center space-x-6 text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span>Low Risk (&lt;40)</span>
+          </span>
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <span>Elevated Risk (40-69)</span>
+          </span>
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+            <span>Critical Overrun (70+)</span>
+          </span>
+          <span className="text-[11px] text-slate-400 italic">
+            • Bubble size reflects approved project budget (Cr Tk)
+          </span>
         </div>
       </div>
 

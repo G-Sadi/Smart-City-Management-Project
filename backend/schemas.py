@@ -240,3 +240,60 @@ class AIAdvisorResponse(BaseModel):
     source: str = "gemini-2.5-flash"  # or 'rule-based-fallback'
     reasoning_trace: Optional[Dict[str, Any]] = None
     artifacts: Optional[Dict[str, Any]] = None
+
+# ----------------- Civic Issue Schemas -----------------
+class CivicIssueCreate(BaseModel):
+    project_id: str
+    category: str
+    description: str
+    citizen_name: Optional[str] = "Anonymous Citizen"
+    citizen_phone: Optional[str] = None
+    location_name: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    photo_url: Optional[str] = None
+
+class CivicIssueOut(BaseModel):
+    id: str
+    project_id: str
+    project_name: Optional[str] = None
+    category: str
+    description: str
+    citizen_name: str
+    citizen_phone: Optional[str] = None
+    location_name: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    photo_url: Optional[str] = None
+    upvotes: int = 1
+    status: str = "Open"
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ----------------- Governance Audit & Scale Schemas -----------------
+class AuditLogOut(BaseModel):
+    id: int
+    timestamp: datetime
+    action: str
+    actor: str
+    details: str
+    prev_hash: str
+    hash: str
+
+    class Config:
+        from_attributes = True
+
+class ScaleBenchmarkOut(BaseModel):
+    total_projects: int
+    total_components: int
+    total_constraints: int
+    execution_time_ms: float
+    throughput_items_per_sec: float
+    dag_acyclic: bool
+    precedence_satisfaction_pct: float
+    resource_conflicts_resolved: int
+    status: str
+    timestamp: str
+

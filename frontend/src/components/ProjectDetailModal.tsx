@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, MapPin, Building2, Calendar, DollarSign, Star, 
   Send, AlertTriangle, CheckCircle2, Clock, GitFork, 
-  MessageSquarePlus, Layers, ShieldCheck, ArrowRight, Share2 
+  MessageSquarePlus, Layers, ShieldCheck, ArrowRight, Share2,
+  TrendingUp, Gauge, ShieldAlert, FileText, Camera
 } from 'lucide-react';
-import { ProjectDetail } from '../types';
+import { ProjectDetail, ProjectRiskForecast } from '../types';
 import { api } from '../api';
+import { calculateProjectRiskForecast } from '../riskEngine';
 
 interface ProjectDetailModalProps {
   projectId: string | null;
@@ -19,6 +21,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
   onRefreshNeeded
 }) => {
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [riskForecast, setRiskForecast] = useState<ProjectRiskForecast | null>(null);
   const [loading, setLoading] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
@@ -32,6 +35,8 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
     api.getProjectDetail(projectId)
       .then(data => {
         setProject(data);
+        const forecast = calculateProjectRiskForecast(data, data.components, data.feedbacks);
+        setRiskForecast(forecast);
         setLoading(false);
       })
       .catch(err => {
@@ -152,6 +157,100 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {/* Predictive Risk & Cost Overrun Forecast Card */}
+                {riskForecast && (
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 text-white shadow-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Gauge className="w-4 h-4 text-cyan-400" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                          Predictive Risk & Cost Overrun Forecast
+                        </h3>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                        riskForecast.risk_tier === 'Critical'
+                          ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                          : riskForecast.risk_tier === 'Elevated'
+                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                          : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                      }`}>
+                        ● {riskForecast.risk_tier} Risk ({riskForecast.risk_score}/100)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Delay Probability</span>
+                        <span className="text-sm font-extrabold text-rose-400 font-mono">
+                          {riskForecast.delay_probability_pct}%
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Forecasted Final Cost</span>
+                        <span className="text-sm font-extrabold text-amber-400 font-mono">
+                          ৳{riskForecast.forecasted_final_cost} Cr
+                        </span>
+                        <span className="text-[9px] text-slate-400 block">
+                          +{riskForecast.forecasted_overrun_pct}% Overrun
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60">
+                        <span className="text-[10px] text-slate-400 block mb-0.5">Predicted Slippage</span>
+                        <span className="text-sm font-extrabold text-sky-400 font-mono">
+                          +{riskForecast.predicted_delay_days} Days
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Top Risk Drivers */}
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Primary Predictive Drivers:
+                      </span>
+                      {riskForecast.top_risk_drivers.map((driver, i) => (
+                        <div key={i} className="flex items-start space-x-1.5 text-xs text-slate-300">
+                          <span className="text-cyan-400 font-bold">•</span>
+                          <span className="leading-snug">{driver}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Variance Factors Bar */}
+                    <div className="pt-2 border-t border-slate-800 grid grid-cols-5 gap-1.5 text-[9px] text-slate-400 text-center">
+                      <div>
+                        <span>Slippage</span>
+                        <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                          <div className="h-full bg-rose-500" style={{ width: `${riskForecast.variance_factors.schedule_slippage}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <span>Cost Burn</span>
+                        <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                          <div className="h-full bg-amber-500" style={{ width: `${riskForecast.variance_factors.historical_burn_pace}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <span>DAG Strain</span>
+                        <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                          <div className="h-full bg-indigo-500" style={{ width: `${riskForecast.variance_factors.critical_path_strain}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <span>Agency Load</span>
+                        <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                          <div className="h-full bg-cyan-500" style={{ width: `${riskForecast.variance_factors.agency_workload_stress}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <span>Citizen Friction</span>
+                        <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                          <div className="h-full bg-purple-500" style={{ width: `${riskForecast.variance_factors.citizen_friction}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Overall Progress Bar */}
                 <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">

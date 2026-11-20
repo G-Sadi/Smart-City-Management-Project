@@ -322,3 +322,116 @@ export interface User {
   committee?: string;
   agency?: string;
 }
+
+// ----------------- Predictive Risk & Overrun Types -----------------
+export type RiskTier = 'Low' | 'Elevated' | 'Critical';
+
+export interface ProjectRiskForecast {
+  project_id: string;
+  name: string;
+  risk_score: number; // 0 - 100
+  risk_tier: RiskTier;
+  delay_probability_pct: number;
+  forecasted_final_cost: number; // in Crore Tk
+  forecasted_overrun_pct: number;
+  predicted_delay_days: number;
+  top_risk_drivers: string[];
+  variance_factors: {
+    critical_path_strain: number; // 0 - 100
+    agency_workload_stress: number; // 0 - 100
+    schedule_slippage: number; // 0 - 100
+    citizen_friction: number; // 0 - 100
+    historical_burn_pace: number; // 0 - 100
+  };
+}
+
+// ----------------- Live Municipal Telemetry Types -----------------
+export interface ZoneTelemetry {
+  zone_id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  traffic_index: number; // 0 - 100%
+  noise_db: number; // 40 - 100 dB
+  aqi: number; // 50 - 300
+  field_crews: number;
+  active_projects: string[];
+}
+
+export interface CityTelemetrySnapshot {
+  timestamp: string;
+  overall_traffic_congestion: number; // 0 - 100%
+  peak_noise_db: number;
+  avg_aqi: number;
+  active_field_crews: number;
+  zones: ZoneTelemetry[];
+  hotspot_alert?: {
+    zone: string;
+    traffic_index: number;
+    related_project_id?: string;
+    related_project_name?: string;
+    message: string;
+  };
+}
+
+// ----------------- Citizen Civic Reporting Types -----------------
+export type CivicIssueCategory =
+  | 'Traffic Bottleneck'
+  | 'Road Damage'
+  | 'Waterlogging'
+  | 'Work Stalled'
+  | 'Safety Hazard'
+  | string;
+
+export interface CivicIssue {
+  id: string;
+  project_id: string;
+  project_name?: string;
+  category: CivicIssueCategory;
+  description: string;
+  citizen_name: string;
+  citizen_phone?: string;
+  location_name: string;
+  latitude?: number;
+  longitude?: number;
+  photo_url?: string;
+  upvotes: number;
+  has_upvoted?: boolean;
+  status: 'Open' | 'Under Investigation' | 'Remediated';
+  created_at: string;
+}
+
+// ----------------- Immutable Audit Chain Types -----------------
+export interface AuditChainEntry {
+  index: number;
+  timestamp: string;
+  action: string;
+  actor: string;
+  details: string;
+  prev_hash: string;
+  hash: string;
+  verified?: boolean;
+}
+
+export interface AuditVerificationResult {
+  valid: boolean;
+  chain_length: number;
+  latest_hash: string;
+  violations: string[];
+  verified_at: string;
+}
+
+// ----------------- Scale Benchmark Types -----------------
+export interface ScaleBenchmarkResult {
+  total_projects: number;
+  total_components: number;
+  total_constraints: number;
+  execution_time_ms: number;
+  throughput_items_per_sec: number;
+  dag_acyclic: boolean;
+  precedence_satisfaction_pct: number;
+  resource_conflicts_resolved: number;
+  status: 'SUCCESS' | 'FAILED';
+  timestamp: string;
+}
+
