@@ -123,13 +123,18 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   };
 
-  // Initialize Leaflet Map (only when viewMode === '2d')
+  // Initialize Leaflet Map once on mount
   useEffect(() => {
-    if (viewMode !== '2d') return;
-    if (!mapContainerRef.current) return;
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    // Guard: Clean orphan _leaflet_id if re-attaching
+    if ((container as any)._leaflet_id && !mapInstanceRef.current) {
+      delete (container as any)._leaflet_id;
+    }
 
     if (!mapInstanceRef.current) {
-      const map = L.map(mapContainerRef.current, {
+      const map = L.map(container, {
         center: [23.75, 90.52],
         zoom: 11,
         zoomControl: true,
@@ -144,21 +149,47 @@ export const MapView: React.FC<MapViewProps> = ({
       densityLayerRef.current = L.layerGroup().addTo(map);
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
-    } else {
-      setTimeout(() => {
-        mapInstanceRef.current?.invalidateSize();
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markersLayerRef.current = null;
+        densityLayerRef.current = null;
+      }
+    };
+  }, []);
+
+  // When switching to '2d' view, smoothly invalidate and sync map viewport
+  useEffect(() => {
+    if (viewMode === '2d' && mapInstanceRef.current) {
+      mapInstanceRef.current.invalidateSize({ animate: false });
+      const rafId = requestAnimationFrame(() => {
+        mapInstanceRef.current?.invalidateSize({ animate: false });
+      });
+      const timer = setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize({ animate: false });
       }, 100);
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(timer);
+      };
     }
   }, [viewMode]);
 
-  // Invalidate map size on window resize or tab switch
+  // Invalidate map size on window resize
   useEffect(() => {
-    const handleResize = () => {
-      mapInstanceRef.current?.invalidateSize();
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    const container = mapContainerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => {
+      if (viewMode === '2d' && mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize({ animate: false });
+      }
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [viewMode]);
 
   // Sync Markers and Density Rings
   useEffect(() => {
@@ -491,39 +522,47 @@ export const MapView: React.FC<MapViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Map / 3D Twin View Container */}
         <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm min-h-[360px] sm:min-h-[480px] lg:min-h-[600px] relative overflow-hidden group">
-          {viewMode === '2d' ? (
-            <div className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] relative">
-              <div ref={mapContainerRef} className="w-full h-full rounded-xl shadow-inner" />
+          {/* 2D GIS Map Container (Always kept mounted in DOM to prevent Leaflet destruction) */}
+          <div
+            className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] relative"
+            style={{ display: viewMode === '2d' ? 'block' : 'none' }}
+          >
+            <div ref={mapContainerRef} className="w-full h-full rounded-xl shadow-inner" />
 
-              {/* Floating Map Controls Card (Top-Right) */}
-              <div className="absolute top-4 right-4 z-20 flex flex-col space-y-2">
-                <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg text-xs space-y-1.5">
-                  <div className="flex items-center justify-between space-x-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center space-x-1">
-                      <Layers className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>Layer Controls</span>
-                    </span>
-                    <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">OSM Free</span>
-                  </div>
-
-                  <button
-                    onClick={() => setShowDensityCircles(!showDensityCircles)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-[11px] font-medium transition ${
-                      showDensityCircles
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    <span>Zone Density Heat</span>
-                    {showDensityCircles ? <Eye className="w-3 h-3 text-emerald-500" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
-                  </button>
+            {/* Floating Map Controls Card (Top-Right) */}
+            <div className="absolute top-4 right-4 z-20 flex flex-col space-y-2">
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg text-xs space-y-1.5">
+                <div className="flex items-center justify-between space-x-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center space-x-1">
+                    <Layers className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Layer Controls</span>
+                  </span>
+                  <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">OSM Free</span>
                 </div>
+
+                <button
+                  onClick={() => setShowDensityCircles(!showDensityCircles)}
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-[11px] font-medium transition ${
+                    showDensityCircles
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}
+                >
+                  <span>Zone Density Heat</span>
+                  {showDensityCircles ? <Eye className="w-3 h-3 text-emerald-500" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
+                </button>
               </div>
             </div>
-          ) : (
+          </div>
+
+          {/* 3D City Twin (Three.js) Container */}
+          <div
+            className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] relative"
+            style={{ display: viewMode === '3d' ? 'block' : 'none' }}
+          >
             <Suspense
               fallback={
-                <div className="w-full h-[52dvh] min-h-[350px] sm:h-[480px] lg:h-[600px] flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
+                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-300 space-y-3 rounded-xl">
                   <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
                   <p className="text-xs font-mono text-cyan-400">Loading 3D Digital Twin Engine (Three.js)...</p>
                 </div>
@@ -535,9 +574,10 @@ export const MapView: React.FC<MapViewProps> = ({
                 selectedProjectId={selectedProjectId}
                 onSelectProject={onSelectProject}
                 isDark={isDark}
+                isActive={viewMode === '3d'}
               />
             </Suspense>
-          )}
+          </div>
         </div>
 
         {/* Side Panel: Project Cards Explorer OR Citizen Feed */}

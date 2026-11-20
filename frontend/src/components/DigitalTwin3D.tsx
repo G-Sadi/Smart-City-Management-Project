@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Project, ComponentItem, ProjectRiskForecast } from '../types';
 import { calculateProjectRiskForecast } from '../riskEngine';
 import {
@@ -13,23 +14,8 @@ interface DigitalTwin3DProps {
   selectedProjectId?: string | null;
   onSelectProject: (projectId: string) => void;
   isDark?: boolean;
+  isActive?: boolean;
 }
-
-// Dhaka geographical center anchor
-const DHAKA_CENTER = { lat: 23.7808, lon: 90.3950 };
-// Coordinate scaling to 3D scene units
-const COORD_SCALE = 650.0;
-
-const ZONES = [
-  { name: 'Mirpur', lat: 23.8068, lon: 90.3687, radius: 2.2, color: 0x38bdf8 },
-  { name: 'Uttara', lat: 23.8759, lon: 90.3795, radius: 2.5, color: 0x818cf8 },
-  { name: 'Gulshan', lat: 23.7925, lon: 90.4078, radius: 2.0, color: 0x34d399 },
-  { name: 'Motijheel', lat: 23.7330, lon: 90.4172, radius: 1.8, color: 0xf59e0b },
-  { name: 'Dhanmondi', lat: 23.7461, lon: 90.3742, radius: 2.0, color: 0xa78bfa },
-  { name: 'Mohammadpur', lat: 23.7658, lon: 90.3584, radius: 1.9, color: 0x2dd4bf },
-  { name: 'Banani', lat: 23.7937, lon: 90.4066, radius: 1.7, color: 0x10b981 },
-  { name: 'Old Dhaka', lat: 23.7104, lon: 90.4074, radius: 2.4, color: 0xf43f5e },
-];
 
 export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
   projects,
@@ -37,6 +23,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
   selectedProjectId,
   onSelectProject,
   isDark = true,
+  isActive = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredProject, setHoveredProject] = useState<{
@@ -48,7 +35,6 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
 
   const [showArcs, setShowArcs] = useState(true);
   const [showZones, setShowZones] = useState(true);
-  const [showGrid, setShowGrid] = useState(true);
 
   // Precompute project risks for fast coloring
   const projectRisks = useMemo(() => {
@@ -60,24 +46,156 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     return map;
   }, [projects, components]);
 
-  // Project map for coordinates
-  const projectPositions = useMemo(() => {
-    const map = new Map<string, THREE.Vector3>();
-    projects.forEach(p => {
-      const x = (p.longitude - DHAKA_CENTER.lon) * COORD_SCALE;
-      const z = -(p.latitude - DHAKA_CENTER.lat) * COORD_SCALE;
-      const height = Math.max(0.6, Math.min(8.5, (p.cost / 40.0) * 2.2));
-      map.set(p.project_id, new THREE.Vector3(x, height / 2, z));
-    });
-    return map;
+  // 1. Filter valid projects with geographic coordinates
+  const validProjects = useMemo(() => {
+    return projects.filter(p =>
+      typeof p.latitude === 'number' && !isNaN(p.latitude) && p.latitude >= -90 && p.latitude <= 90 &&
+      typeof p.longitude === 'number' && !isNaN(p.longitude) && p.longitude >= -180 && p.longitude <= 180
+    );
   }, [projects]);
 
-  // Three.js refs for camera reset & interaction
+  // 2. Compute dynamic geographic bounding box of the active dataset
+  const geoBounds = useMemo(() => {
+    if (validProjects.length === 0) {
+      return {
+        minLat: 23.6, maxLat: 23.9, minLng: 90.4, maxLng: 90.6,
+        centerLat: 23.75, centerLng: 90.52,
+        spanLat: 0.3, spanLng: 0.2
+      };
+    }
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLng = Infinity, maxLng = -Infinity;
+    validProjects.forEach(p => {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    });
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const spanLat = Math.max(0.005, maxLat - minLat);
+    const spanLng = Math.max(0.005, maxLng - minLng);
+    return { minLat, maxLat, minLng, maxLng, centerLat, centerLng, spanLat, spanLng };
+  }, [validProjects]);
+
+  // 3. Normalization scale: maps full dataset onto ~75 scene units in XZ plane
+  const WORLD_SPAN = 75.0;
+  const coordScale = useMemo(() => {
+    const maxSpan = Math.max(geoBounds.spanLat, geoBounds.spanLng);
+    return WORLD_SPAN / maxSpan;
+  }, [geoBounds]);
+
+  // 4. Calculate 3D positions with spiral offset for co-located projects
+  const projectPositions = useMemo(() => {
+    const map = new Map<string, { pos: THREE.Vector3; height: number; radius: number }>();
+    const clusterMap = new Map<string, Project[]>();
+
+    validProjects.forEach(p => {
+      const key = `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`;
+      if (!clusterMap.has(key)) clusterMap.set(key, []);
+      clusterMap.get(key)!.push(p);
+    });
+
+    clusterMap.forEach(cluster => {
+      cluster.forEach((p, index) => {
+        const baseX = (p.longitude - geoBounds.centerLng) * coordScale;
+        const baseZ = -(p.latitude - geoBounds.centerLat) * coordScale;
+
+        let finalX = baseX;
+        let finalZ = baseZ;
+
+        if (cluster.length > 1 && index > 0) {
+          const radius = Math.min(3.2, 0.95 * Math.sqrt(index));
+          const angle = index * 2.39996;
+          finalX += radius * Math.cos(angle);
+          finalZ += radius * Math.sin(angle);
+        }
+
+        const height = Math.max(2.4, Math.min(14.0, (p.cost / 30.0) * 4.0 + 2.5));
+        const radius = 0.85;
+
+        map.set(p.project_id, {
+          pos: new THREE.Vector3(finalX, height / 2, finalZ),
+          height,
+          radius
+        });
+      });
+    });
+
+    return map;
+  }, [validProjects, geoBounds, coordScale]);
+
+  // 5. Dynamically derive real municipal zones from the dataset
+  const derivedZones = useMemo(() => {
+    const locMap = new Map<string, { lats: number[]; lngs: number[]; count: number; cost: number }>();
+    validProjects.forEach(p => {
+      const loc = p.location || 'Municipal Center';
+      if (!locMap.has(loc)) {
+        locMap.set(loc, { lats: [], lngs: [], count: 0, cost: 0 });
+      }
+      const entry = locMap.get(loc)!;
+      entry.lats.push(p.latitude);
+      entry.lngs.push(p.longitude);
+      entry.count += 1;
+      entry.cost += p.cost || 0;
+    });
+
+    const ZONE_PALETTE = [
+      0x38bdf8, 0x10b981, 0x818cf8, 0xf59e0b, 0x2dd4bf,
+      0xa78bfa, 0xf43f5e, 0x06b6d4, 0xec4899, 0x14b8a6
+    ];
+    let cIdx = 0;
+
+    const zones: Array<{
+      name: string;
+      x: number;
+      z: number;
+      radius: number;
+      color: number;
+      count: number;
+      cost: number;
+    }> = [];
+
+    locMap.forEach((data, name) => {
+      const avgLat = data.lats.reduce((a, b) => a + b, 0) / data.lats.length;
+      const avgLng = data.lngs.reduce((a, b) => a + b, 0) / data.lngs.length;
+      const zX = (avgLng - geoBounds.centerLng) * coordScale;
+      const zZ = -(avgLat - geoBounds.centerLat) * coordScale;
+
+      let maxDist = 2.5;
+      for (let i = 0; i < data.lats.length; i++) {
+        const pX = (data.lngs[i] - geoBounds.centerLng) * coordScale;
+        const pZ = -(data.lats[i] - geoBounds.centerLat) * coordScale;
+        const d = Math.hypot(pX - zX, pZ - zZ);
+        if (d > maxDist) maxDist = d;
+      }
+
+      zones.push({
+        name,
+        x: zX,
+        z: zZ,
+        radius: Math.max(4.0, Math.min(22.0, maxDist + 2.5)),
+        color: ZONE_PALETTE[cIdx % ZONE_PALETTE.length],
+        count: data.count,
+        cost: data.cost
+      });
+      cIdx++;
+    });
+
+    return zones;
+  }, [validProjects, geoBounds, coordScale]);
+
+  // Three.js refs for interaction and camera control
   const sceneStateRef = useRef<{
     resetCamera: () => void;
     zoomCamera: (factor: number) => void;
+    focusOnProject: (projId: string) => void;
   } | null>(null);
 
+  const pillarMeshesRef = useRef<THREE.Mesh[]>([]);
+  const selectionBeaconsRef = useRef<Map<string, THREE.Object3D>>(new Map());
+
+  // Main Three.js Scene Setup
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -85,19 +203,23 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     let width = container.clientWidth || 800;
     let height = container.clientHeight || 550;
 
-    // 1. Scene, Camera, Renderer
+    // 1. Scene & Linear Clear Fog
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isDark ? 0x070b14 : 0xf8fafc);
-    scene.fog = new THREE.FogExp2(isDark ? 0x070b14 : 0xf8fafc, 0.015);
+    // Linear fog starts at 120 and ends at 380: zero fog in the 0-90 world radius
+    scene.fog = new THREE.Fog(isDark ? 0x070b14 : 0xf8fafc, 120, 380);
 
+    // 2. Camera Setup
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    const initialCamPos = new THREE.Vector3(0, 38, 48);
-    camera.position.copy(initialCamPos);
-    camera.lookAt(0, 0, 0);
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: false, powerPreference: 'high-performance' });
+    // 3. WebGL Renderer
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isMobile,
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 2));
     renderer.shadowMap.enabled = !isMobile;
@@ -108,146 +230,225 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     container.style.touchAction = 'none';
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting
-    const ambientLight = new THREE.AmbientLight(isDark ? 0x475569 : 0x94a3b8, isDark ? 1.2 : 1.5);
+    // 4. OrbitControls with smooth damping
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.screenSpacePanning = true;
+    controls.minDistance = 10;
+    controls.maxDistance = 250;
+    controls.maxPolarAngle = Math.PI / 2.05;
+    controls.minPolarAngle = 0.05;
+
+    // 5. Multi-Source Balanced High-Contrast Lighting
+    const hemiLight = new THREE.HemisphereLight(
+      isDark ? 0xcfedff : 0xffffff,
+      isDark ? 0x0f172a : 0x334155,
+      isDark ? 1.4 : 1.2
+    );
+    scene.add(hemiLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.95 : 1.1);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, isDark ? 1.4 : 1.8);
-    dirLight.position.set(30, 50, 20);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024;
-    dirLight.shadow.mapSize.height = 1024;
-    scene.add(dirLight);
+    const keyLight = new THREE.DirectionalLight(0xffffff, isDark ? 2.4 : 2.6);
+    keyLight.position.set(60, 90, 50);
+    keyLight.castShadow = !isMobile;
+    if (!isMobile) {
+      keyLight.shadow.mapSize.width = 1024;
+      keyLight.shadow.mapSize.height = 1024;
+      keyLight.shadow.camera.near = 0.5;
+      keyLight.shadow.camera.far = 400;
+      keyLight.shadow.camera.left = -90;
+      keyLight.shadow.camera.right = 90;
+      keyLight.shadow.camera.top = 90;
+      keyLight.shadow.camera.bottom = -90;
+      keyLight.shadow.bias = -0.0005;
+    }
+    scene.add(keyLight);
 
-    const pointLight = new THREE.PointLight(0x06b6d4, 1.2, 80);
-    pointLight.position.set(0, 20, 0);
-    scene.add(pointLight);
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, isDark ? 1.3 : 1.0);
+    fillLight.position.set(-60, 45, -50);
+    scene.add(fillLight);
 
-    // 3. Ground Grid & Base Plate
-    const groundGroup = new THREE.Group();
-    const groundGeo = new THREE.PlaneGeometry(120, 120);
+    const rimLight = new THREE.DirectionalLight(0xf59e0b, isDark ? 0.9 : 0.7);
+    rimLight.position.set(10, 35, -70);
+    scene.add(rimLight);
+
+    // Moving beacon light for dynamic ambient reflection
+    const beaconLight = new THREE.PointLight(0x06b6d4, 1.2, 90);
+    beaconLight.position.set(0, 20, 0);
+    scene.add(beaconLight);
+
+    // 6. Ground Plane & Grid Platform
+    const groundSize = 150;
+    const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize);
     const groundMat = new THREE.MeshStandardMaterial({
       color: isDark ? 0x0b1120 : 0xe2e8f0,
-      roughness: 0.8,
-      metalness: 0.2,
+      roughness: 0.75,
+      metalness: 0.25,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
-    ground.receiveShadow = true;
-    groundGroup.add(ground);
+    ground.receiveShadow = !isMobile;
+    scene.add(ground);
 
-    const grid = new THREE.GridHelper(120, 48, isDark ? 0x0ea5e9 : 0x94a3b8, isDark ? 0x1e293b : 0xcbd5e1);
+    const grid = new THREE.GridHelper(
+      groundSize,
+      50,
+      isDark ? 0x0284c7 : 0x0284c7,
+      isDark ? 0x1e293b : 0xcbd5e1
+    );
     grid.position.y = 0;
-    groundGroup.add(grid);
-    scene.add(groundGroup);
+    scene.add(grid);
 
-    // 4. Extruded City Zone Blocks
+    // 7. Dynamic Municipal Zone Platforms
     const zoneGroup = new THREE.Group();
-    ZONES.forEach(z => {
-      const zX = (z.lon - DHAKA_CENTER.lon) * COORD_SCALE;
-      const zZ = -(z.lat - DHAKA_CENTER.lat) * COORD_SCALE;
-
-      // Circular glowing zone footprint
-      const ringGeo = new THREE.RingGeometry(z.radius * 0.85, z.radius * 1.05, 32);
+    derivedZones.forEach(z => {
+      // Outer glowing ring
+      const ringGeo = new THREE.RingGeometry(z.radius * 0.92, z.radius, 36);
       const ringMat = new THREE.MeshBasicMaterial({
         color: z.color,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: isDark ? 0.35 : 0.5,
+        opacity: isDark ? 0.45 : 0.6,
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(zX, 0.02, zZ);
+      ring.position.set(z.x, 0.02, z.z);
       zoneGroup.add(ring);
 
-      // Low extruded block representing the municipal ward center
-      const baseBlockGeo = new THREE.CylinderGeometry(z.radius * 0.7, z.radius * 0.75, 0.4, 24);
-      const baseBlockMat = new THREE.MeshStandardMaterial({
-        color: isDark ? 0x1e293b : 0xe2e8f0,
+      // Low extruded platform disk
+      const padGeo = new THREE.CylinderGeometry(z.radius * 0.88, z.radius * 0.92, 0.2, 32);
+      const padMat = new THREE.MeshStandardMaterial({
+        color: isDark ? 0x131d31 : 0xe2e8f0,
         transparent: true,
-        opacity: isDark ? 0.45 : 0.6,
+        opacity: isDark ? 0.5 : 0.65,
         roughness: 0.6,
+        metalness: 0.2,
       });
-      const baseBlock = new THREE.Mesh(baseBlockGeo, baseBlockMat);
-      baseBlock.position.set(zX, 0.2, zZ);
-      zoneGroup.add(baseBlock);
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.set(z.x, 0.1, z.z);
+      pad.receiveShadow = !isMobile;
+      zoneGroup.add(pad);
     });
     scene.add(zoneGroup);
 
-    // 5. 3D Project Infrastructure Pillars
+    // 8. 3D Project Infrastructure Towers
     const pillarGroup = new THREE.Group();
     const pillarMeshes: THREE.Mesh[] = [];
+    const selectionMap = new Map<string, THREE.Object3D>();
 
-    projects.forEach(p => {
-      const x = (p.longitude - DHAKA_CENTER.lon) * COORD_SCALE;
-      const z = -(p.latitude - DHAKA_CENTER.lat) * COORD_SCALE;
-      const height = Math.max(0.6, Math.min(8.5, (p.cost / 40.0) * 2.2));
-      const radius = 0.55;
-
+    validProjects.forEach(p => {
+      const posData = projectPositions.get(p.project_id);
+      if (!posData) return;
+      const { pos, height, radius } = posData;
       const risk = projectRisks.get(p.project_id);
-      let colorHex = 0x0284c7; // Default Blue (Running)
+
+      let colorHex = 0x10b981; // Running = Emerald Green
+      let emissiveHex = 0x047857;
 
       if (p.status === 'Completed') {
-        colorHex = 0x10b981; // Emerald Green
+        colorHex = 0x38bdf8; // Sky Blue
+        emissiveHex = 0x0284c7;
       } else if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
         colorHex = 0xf43f5e; // Rose Red
+        emissiveHex = 0xbe123c;
       } else if (risk?.risk_tier === 'Elevated') {
-        colorHex = 0xf59e0b; // Amber
+        colorHex = 0xf59e0b; // Amber Gold
+        emissiveHex = 0xb45309;
       } else if (p.status === 'Approved') {
-        colorHex = 0x06b6d4; // Cyan
+        colorHex = 0xa855f7; // Purple
+        emissiveHex = 0x7e22ce;
       }
 
       const isSelected = selectedProjectId === p.project_id;
-      const pillarGeo = new THREE.CylinderGeometry(radius * 0.9, radius * 1.1, height, 16);
-      const pillarMat = new THREE.MeshStandardMaterial({
+
+      // Architectural 8-sided faceted prism tower
+      const towerGeo = new THREE.CylinderGeometry(radius * 0.8, radius * 1.05, height, 8);
+      const towerMat = new THREE.MeshStandardMaterial({
         color: isSelected ? 0x38bdf8 : colorHex,
-        emissive: isSelected ? 0x0284c7 : (risk?.risk_tier === 'Critical' ? 0x881337 : 0x000000),
-        emissiveIntensity: isSelected ? 0.6 : 0.4,
-        roughness: 0.3,
-        metalness: 0.5,
+        emissive: isSelected ? 0x38bdf8 : emissiveHex,
+        emissiveIntensity: isSelected ? 0.95 : 0.45,
+        roughness: 0.25,
+        metalness: 0.4,
       });
 
-      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-      pillar.position.set(x, height / 2, z);
-      pillar.castShadow = true;
-      pillar.receiveShadow = true;
-      pillar.userData = { project: p, risk };
+      const pillar = new THREE.Mesh(towerGeo, towerMat);
+      pillar.position.set(pos.x, height / 2, pos.z);
+      pillar.castShadow = !isMobile;
+      pillar.receiveShadow = !isMobile;
+      pillar.userData = {
+        project: p,
+        risk,
+        height,
+        radius,
+        baseColor: colorHex,
+        baseEmissive: emissiveHex
+      };
 
       pillarGroup.add(pillar);
       pillarMeshes.push(pillar);
 
-      // Top glowing indicator cap
-      const capGeo = new THREE.SphereGeometry(radius * 0.85, 12, 12);
-      const capMat = new THREE.MeshBasicMaterial({
+      // Top glowing spherical obstruction beacon
+      const beaconGeo = new THREE.SphereGeometry(radius * 0.75, 12, 12);
+      const beaconMat = new THREE.MeshBasicMaterial({
         color: isSelected ? 0xffffff : colorHex,
       });
-      const cap = new THREE.Mesh(capGeo, capMat);
-      cap.position.set(x, height + 0.25, z);
-      pillarGroup.add(cap);
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.set(pos.x, height + 0.3, pos.z);
+      pillarGroup.add(beacon);
 
-      // Beacon ring for Delayed or Critical projects
+      // Metallic foundation disk
+      const padGeo = new THREE.CylinderGeometry(radius * 1.35, radius * 1.45, 0.2, 12);
+      const padMat = new THREE.MeshStandardMaterial({
+        color: isDark ? 0x1e293b : 0x94a3b8,
+        roughness: 0.5,
+        metalness: 0.7,
+      });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.set(pos.x, 0.1, pos.z);
+      pad.receiveShadow = !isMobile;
+      pillarGroup.add(pad);
+
+      // Delayed or Critical ground indicator ring
       if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
-        const beaconGeo = new THREE.RingGeometry(radius * 1.2, radius * 1.6, 24);
-        const beaconMat = new THREE.MeshBasicMaterial({
+        const warnGeo = new THREE.RingGeometry(radius * 1.45, radius * 1.85, 24);
+        const warnMat = new THREE.MeshBasicMaterial({
           color: 0xf43f5e,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.7,
+          opacity: 0.65,
         });
-        const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-        beacon.rotation.x = -Math.PI / 2;
-        beacon.position.set(x, 0.05, z);
-        pillarGroup.add(beacon);
+        const warnRing = new THREE.Mesh(warnGeo, warnMat);
+        warnRing.rotation.x = -Math.PI / 2;
+        warnRing.position.set(pos.x, 0.05, pos.z);
+        pillarGroup.add(warnRing);
       }
+
+      // Selection Halo Ring
+      const selectHaloGeo = new THREE.RingGeometry(radius * 1.7, radius * 2.3, 28);
+      const selectHaloMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: isSelected ? 0.85 : 0.0,
+      });
+      const selectHalo = new THREE.Mesh(selectHaloGeo, selectHaloMat);
+      selectHalo.rotation.x = -Math.PI / 2;
+      selectHalo.position.set(pos.x, 0.06, pos.z);
+      selectHalo.visible = isSelected;
+      pillarGroup.add(selectHalo);
+      selectionMap.set(p.project_id, selectHalo);
     });
+
     scene.add(pillarGroup);
+    pillarMeshesRef.current = pillarMeshes;
+    selectionBeaconsRef.current = selectionMap;
 
-    // 6. Curved 3D DAG Dependency Arcs
+    // 9. Curved 3D DAG Dependency Arcs
     const arcGroup = new THREE.Group();
-    const arcCurves: Array<{ curve: THREE.CatmullRomCurve3; line: THREE.Line; particles?: THREE.Points }> = [];
-
-    // Map parent project to child project via components
     const compMap = new Map(components.map(c => [c.component_id, c]));
     const projectPairs = new Set<string>();
 
@@ -260,121 +461,98 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       if (projectPairs.has(pairKey)) return;
       projectPairs.add(pairKey);
 
-      const posA = projectPositions.get(parentComp.project_id);
-      const posB = projectPositions.get(c.project_id);
+      const posA = projectPositions.get(parentComp.project_id)?.pos;
+      const posB = projectPositions.get(c.project_id)?.pos;
       if (!posA || !posB) return;
 
-      // Create high arch curve
       const midPoint = new THREE.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
       const dist = posA.distanceTo(posB);
       midPoint.y += Math.max(3.5, dist * 0.35);
 
       const curve = new THREE.CatmullRomCurve3([posA, midPoint, posB]);
-      const points = curve.getPoints(40);
+      const points = curve.getPoints(36);
       const curveGeo = new THREE.BufferGeometry().setFromPoints(points);
       const curveMat = new THREE.LineBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: isDark ? 0.55 : 0.7,
+        opacity: isDark ? 0.6 : 0.75,
         linewidth: 2,
       });
 
       const line = new THREE.Line(curveGeo, curveMat);
       arcGroup.add(line);
-      arcCurves.push({ curve, line });
     });
     scene.add(arcGroup);
 
-    // 7. Interactive Orbit & Pan Controls (Zero-Dependency Pointer Events)
-    let isDragging = false;
-    let isRightDrag = false;
-    let prevMouseX = 0;
-    let prevMouseY = 0;
-    let spherical = new THREE.Spherical().setFromVector3(camera.position);
-    let target = new THREE.Vector3(0, 0, 0);
+    // 10. Auto-Framing using THREE.Box3 bounding calculation
+    const box = new THREE.Box3();
+    if (pillarMeshes.length > 0) {
+      box.setFromObject(pillarGroup);
+    }
 
-    const onPointerDown = (e: PointerEvent) => {
-      isDragging = true;
-      isRightDrag = e.button === 2 || e.shiftKey;
-      prevMouseX = e.clientX;
-      prevMouseY = e.clientY;
-    };
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    if (!box.isEmpty()) {
+      box.getCenter(center);
+      box.getSize(size);
+    } else {
+      center.set(0, 0, 0);
+      size.set(50, 10, 50);
+    }
 
-    const onPointerMove = (e: PointerEvent) => {
+    const maxDim = Math.max(size.x, size.z, 28);
+    const fov = camera.fov * (Math.PI / 180);
+    let camDist = (maxDim / 2) / Math.tan(fov / 2);
+    camDist = Math.max(48, camDist * 1.25);
+
+    const defaultTarget = new THREE.Vector3(center.x, 2.0, center.z);
+    const defaultCamPos = new THREE.Vector3(
+      center.x + camDist * 0.62,
+      center.y + camDist * 0.75,
+      center.z + camDist * 0.82
+    );
+
+    camera.position.copy(defaultCamPos);
+    controls.target.copy(defaultTarget);
+    controls.update();
+
+    // 11. Raycaster for Hover & Selection
+    const raycaster = new THREE.Raycaster();
+    const mousePos = new THREE.Vector2();
+
+    const onPointerMove = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX;
       const mouseY = e.clientY;
 
-      if (isDragging) {
-        const deltaX = mouseX - prevMouseX;
-        const deltaY = mouseY - prevMouseY;
-        prevMouseX = mouseX;
-        prevMouseY = mouseY;
+      mousePos.x = ((mouseX - rect.left) / rect.width) * 2 - 1;
+      mousePos.y = -((mouseY - rect.top) / rect.height) * 2 + 1;
 
-        if (isRightDrag) {
-          // Pan camera
-          const panSpeed = 0.05 * (spherical.radius / 40);
-          const right = new THREE.Vector3();
-          camera.getWorldDirection(right);
-          right.cross(camera.up).normalize();
+      raycaster.setFromCamera(mousePos, camera);
+      const intersects = raycaster.intersectObjects(pillarMeshes, false);
 
-          target.addScaledVector(right, -deltaX * panSpeed);
-          target.addScaledVector(camera.up, deltaY * panSpeed);
-        } else {
-          // Orbit camera
-          spherical.theta -= deltaX * 0.007;
-          spherical.phi = Math.max(0.15, Math.min(Math.PI / 2.1, spherical.phi - deltaY * 0.007));
-        }
-
-        camera.position.setFromSpherical(spherical).add(target);
-        camera.lookAt(target);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object as THREE.Mesh;
+        const { project, risk } = hit.userData;
+        setHoveredProject({
+          project,
+          risk,
+          screenX: mouseX - rect.left,
+          screenY: mouseY - rect.top,
+        });
+        container.style.cursor = 'pointer';
       } else {
-        // Raycasting for Hover Tooltip
-        const normX = ((mouseX - rect.left) / rect.width) * 2 - 1;
-        const normY = -((mouseY - rect.top) / rect.height) * 2 + 1;
-
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(new THREE.Vector2(normX, normY), camera);
-        const intersects = raycaster.intersectObjects(pillarMeshes, false);
-
-        if (intersects.length > 0) {
-          const hit = intersects[0].object as THREE.Mesh;
-          const { project, risk } = hit.userData;
-          setHoveredProject({
-            project,
-            risk,
-            screenX: mouseX - rect.left,
-            screenY: mouseY - rect.top,
-          });
-          container.style.cursor = 'pointer';
-        } else {
-          setHoveredProject(null);
-          container.style.cursor = isDragging ? 'grabbing' : 'grab';
-        }
+        setHoveredProject(null);
+        container.style.cursor = 'default';
       }
-    };
-
-    const onPointerUp = () => {
-      isDragging = false;
-      isRightDrag = false;
-      container.style.cursor = 'grab';
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const zoomFactor = e.deltaY > 0 ? 1.08 : 0.92;
-      spherical.radius = Math.max(12, Math.min(110, spherical.radius * zoomFactor));
-      camera.position.setFromSpherical(spherical).add(target);
-      camera.lookAt(target);
     };
 
     const onClick = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
-      const normX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const normY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      mousePos.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mousePos.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(normX, normY), camera);
+      raycaster.setFromCamera(mousePos, camera);
       const intersects = raycaster.intersectObjects(pillarMeshes, false);
 
       if (intersects.length > 0) {
@@ -386,63 +564,34 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       }
     };
 
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-
-    // Multi-touch Pinch to Zoom on Mobile Screens
-    let touchStartDist = 0;
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        touchStartDist = Math.hypot(dx, dy);
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && touchStartDist > 0) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const currentDist = Math.hypot(dx, dy);
-        if (currentDist > 0) {
-          const factor = touchStartDist / currentDist;
-          spherical.radius = Math.max(12, Math.min(110, spherical.radius * (1 + (factor - 1) * 0.08)));
-          camera.position.setFromSpherical(spherical).add(target);
-          camera.lookAt(target);
-          touchStartDist = currentDist;
-        }
-      }
-    };
-
-    const onTouchEnd = () => {
-      touchStartDist = 0;
-    };
-
-    container.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: true });
-    container.addEventListener('touchend', onTouchEnd);
-    container.addEventListener('wheel', onWheel, { passive: false });
+    container.addEventListener('mousemove', onPointerMove);
     container.addEventListener('click', onClick);
-    container.addEventListener('contextmenu', onContextMenu);
 
     // Save camera controls to ref for HUD buttons
     sceneStateRef.current = {
       resetCamera: () => {
-        spherical.setFromVector3(initialCamPos);
-        target.set(0, 0, 0);
-        camera.position.copy(initialCamPos);
-        camera.lookAt(target);
+        camera.position.copy(defaultCamPos);
+        controls.target.copy(defaultTarget);
+        controls.update();
       },
       zoomCamera: (factor: number) => {
-        spherical.radius = Math.max(12, Math.min(110, spherical.radius * factor));
-        camera.position.setFromSpherical(spherical).add(target);
-        camera.lookAt(target);
+        const offset = camera.position.clone().sub(controls.target);
+        offset.multiplyScalar(factor);
+        offset.clampLength(12, 220);
+        camera.position.copy(controls.target).add(offset);
+        controls.update();
       },
+      focusOnProject: (projId: string) => {
+        const posData = projectPositions.get(projId);
+        if (posData) {
+          controls.target.set(posData.pos.x, posData.pos.y, posData.pos.z);
+          camera.position.set(posData.pos.x + 18, posData.pos.y + 16, posData.pos.z + 20);
+          controls.update();
+        }
+      }
     };
 
-    // 8. Responsive Resize
+    // 12. Responsive Resize
     const resizeObserver = new ResizeObserver(() => {
       if (!container) return;
       width = container.clientWidth;
@@ -454,50 +603,73 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     });
     resizeObserver.observe(container);
 
-    // 9. Render & Animation Loop
+    // 13. Render & Animation Loop
     let animationFrameId: number;
-    let clock = new THREE.Clock();
+    let isRunning = true;
+    const clock = new THREE.Clock();
 
     const animate = () => {
+      if (!isRunning) return;
       animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
 
-      // Gentle pulsing of beacon lights
-      pointLight.position.x = Math.sin(elapsedTime * 0.4) * 15;
-      pointLight.position.z = Math.cos(elapsedTime * 0.4) * 15;
+      if (isActive) {
+        const elapsedTime = clock.getElapsedTime();
+        beaconLight.position.x = Math.sin(elapsedTime * 0.45) * 20;
+        beaconLight.position.z = Math.cos(elapsedTime * 0.45) * 20;
 
-      renderer.render(scene, camera);
+        controls.update();
+        renderer.render(scene, camera);
+      }
     };
     animate();
 
-    // 10. Clean Cleanup on Unmount
+    // 14. Clean Cleanup on Unmount
     return () => {
+      isRunning = false;
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
-      container.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('wheel', onWheel);
+      controls.dispose();
+
+      container.removeEventListener('mousemove', onPointerMove);
       container.removeEventListener('click', onClick);
-      container.removeEventListener('contextmenu', onContextMenu);
 
       renderer.dispose();
       groundGeo.dispose();
       groundMat.dispose();
       grid.dispose();
+
       pillarMeshes.forEach(m => {
         m.geometry.dispose();
         if (Array.isArray(m.material)) m.material.forEach(mat => mat.dispose());
         else m.material.dispose();
       });
+
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [projects, components, selectedProjectId, isDark, projectRisks, projectPositions]);
+  }, [validProjects, components, isDark, coordScale, geoBounds, projectPositions, derivedZones]);
+
+  // Highlight and focus on selected project without rebuilding the entire scene
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    pillarMeshesRef.current.forEach(mesh => {
+      const isSelected = mesh.userData?.project?.project_id === selectedProjectId;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (mat) {
+        mat.emissive.setHex(isSelected ? 0x38bdf8 : mesh.userData.baseEmissive);
+        mat.emissiveIntensity = isSelected ? 0.95 : 0.45;
+      }
+    });
+
+    selectionBeaconsRef.current.forEach((halo, pid) => {
+      halo.visible = pid === selectedProjectId;
+    });
+
+    if (isActive) {
+      sceneStateRef.current?.focusOnProject(selectedProjectId);
+    }
+  }, [selectedProjectId, isActive]);
 
   return (
     <div className="relative w-full h-[50dvh] min-h-[350px] sm:h-[500px] lg:h-[650px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 select-none touch-none">
@@ -508,21 +680,21 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-slate-300 shadow-xl z-20">
         <button
           onClick={() => sceneStateRef.current?.zoomCamera(0.85)}
-          title="Zoom In"
+          title="Zoom In (+)"
           className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
           onClick={() => sceneStateRef.current?.zoomCamera(1.15)}
-          title="Zoom Out"
+          title="Zoom Out (-)"
           className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
           onClick={() => sceneStateRef.current?.resetCamera()}
-          title="Reset Camera Angle"
+          title="Reset Camera Angle (Auto-Frame All Projects)"
           className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
@@ -533,20 +705,20 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       <div className="absolute bottom-4 left-4 p-3 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-800 text-xs text-slate-300 shadow-xl z-20 space-y-2 pointer-events-auto hidden sm:block">
         <div className="flex items-center space-x-2 font-medium text-slate-200 pb-1 border-b border-slate-800">
           <Layers className="w-3.5 h-3.5 text-cyan-400" />
-          <span>3D City Twin Visual Encoding</span>
+          <span>3D City Twin Visual Encoding ({validProjects.length} Projects)</span>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm" />
+            <span>Running / Normal</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-sm" />
             <span>Completed / Approved</span>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-sm" />
-            <span>Running / Low Risk</span>
-          </div>
-          <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm" />
-            <span>Elevated Risk</span>
+            <span>Elevated Risk / Watch</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm animate-pulse" />
@@ -554,7 +726,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
           </div>
         </div>
         <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
-          Height = Budget (Cr Tk) • Arcs = Cross-Project Precedences
+          Towers = Budget & Progress • Ground Pads = Real Municipal Zones
         </div>
       </div>
 
@@ -604,13 +776,13 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
                 <p className="font-medium text-slate-300">{hoveredProject.project.exec}</p>
               </div>
               <div>
-                <span className="text-slate-400">Forecast Cost:</span>
-                <p className="font-semibold text-amber-400 font-mono">৳{hoveredProject.risk.forecasted_final_cost} Cr</p>
+                <span className="text-slate-400">Location:</span>
+                <p className="font-medium text-slate-300">{hoveredProject.project.location}</p>
               </div>
             </div>
 
             <div className="text-[10px] text-cyan-300/80 bg-cyan-950/40 p-1.5 rounded border border-cyan-900/50 flex items-center justify-between">
-              <span>Click pillar to inspect full DPP drawer</span>
+              <span>Click tower to inspect full DPP dossier</span>
               <span className="font-bold">→</span>
             </div>
           </div>
