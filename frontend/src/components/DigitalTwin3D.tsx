@@ -1,11 +1,27 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Project, ComponentItem, ProjectRiskForecast } from '../types';
-import { calculateProjectRiskForecast } from '../riskEngine';
+import { Project, ComponentItem } from '../types';
 import {
-  RotateCcw, Eye, Layers, Compass, Zap, AlertTriangle, ShieldCheck,
-  ZoomIn, ZoomOut, Maximize2, X, RefreshCw
+  InfrastructureCategory,
+  ColorByMode,
+  PhaseFilter,
+  ProjectPaceInfo,
+  CATEGORY_META,
+  AGENCY_COLORS,
+  PACE_COLORS,
+  classifyInfrastructureCategory,
+  calculateProjectPace,
+  resolveProjectColor,
+  computeDeclusteredPositions,
+  createZoneBadgeCanvasTexture,
+  createTacticalGroundCanvasTexture,
+} from '../utils/digitalTwin3DUtils';
+import {
+  ZoomIn, ZoomOut, RotateCcw, Compass, MapPin, Eye,
+  Layers, AlertTriangle, ShieldCheck, CheckCircle2,
+  Clock, Activity, Calendar, Zap, RefreshCw, ChevronRight,
+  Maximize2
 } from 'lucide-react';
 
 interface DigitalTwin3DProps {
@@ -15,15 +31,6 @@ interface DigitalTwin3DProps {
   onSelectProject: (projectId: string) => void;
   isDark?: boolean;
   isActive?: boolean;
-}
-
-interface ProjectPosition {
-  pos: THREE.Vector3;
-  height: number;
-  radius: number;
-  color: number;
-  emissive: number;
-  tier: string;
 }
 
 export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
@@ -37,255 +44,120 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [webGLError, setWebGLError] = useState<string | null>(null);
 
+  // View state & Mode toggles
+  const [colorByMode, setColorByMode] = useState<ColorByMode>('status');
+  const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
+  const [showTacticalBase, setShowTacticalBase] = useState<boolean>(true);
+  const [showZoneBadges, setShowZoneBadges] = useState<boolean>(true);
+
+  // Interactive Hover state
   const [hoveredProject, setHoveredProject] = useState<{
     project: Project;
-    risk: ProjectRiskForecast;
+    paceInfo: ProjectPaceInfo;
+    category: InfrastructureCategory;
+    colorStr: string;
     screenX: number;
     screenY: number;
   } | null>(null);
 
-  // Precompute project risks for fast status mapping
-  const projectRisks = useMemo(() => {
-    const map = new Map<string, ProjectRiskForecast>();
+  // 1. Sanitized & Precomputed Pace for each project
+  const projectPaceMap = useMemo(() => {
+    const map = new Map<string, ProjectPaceInfo>();
     projects.forEach(p => {
       if (!p || !p.project_id) return;
-      const comps = components.filter(c => c && c.project_id === p.project_id);
-      map.set(p.project_id, calculateProjectRiskForecast(p, comps));
+      map.set(p.project_id, calculateProjectPace(p));
     });
     return map;
-  }, [projects, components]);
-
-  // 1. Strict Sanitization: Guarantee finite valid numeric coordinates (Zero NaN Guarantee)
-  const validProjects = useMemo(() => {
-    return projects.filter(p => {
-      if (!p) return false;
-      const lat = Number(p.latitude);
-      const lng = Number(p.longitude);
-      return (
-        Number.isFinite(lat) &&
-        Number.isFinite(lng) &&
-        lat >= -90 &&
-        lat <= 90 &&
-        lng >= -180 &&
-        lng <= 180
-      );
-    });
   }, [projects]);
 
-  // 2. Compute dynamic geographic bounding box across valid dataset
-  const geoBounds = useMemo(() => {
-    if (validProjects.length === 0) {
-      return {
-        minLat: 23.6,
-        maxLat: 23.9,
-        minLng: 90.4,
-        maxLng: 90.6,
-        centerLat: 23.75,
-        centerLng: 90.52,
-        spanLat: 0.3,
-        spanLng: 0.2,
-      };
-    }
-    let minLat = Infinity, maxLat = -Infinity;
-    let minLng = Infinity, maxLng = -Infinity;
+  // 2. Anti-Collision De-Clustering Engine (Zero Overlap & Zero Z-Fighting)
+  const layoutData = useMemo(() => {
+    return computeDeclusteredPositions(projects, 82.0);
+  }, [projects]);
 
-    validProjects.forEach(p => {
-      const lat = Number(p.latitude);
-      const lng = Number(p.longitude);
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-    });
+  const { projectPositions, zones } = layoutData;
 
-    const centerLat = (minLat + maxLat) / 2;
-    const centerLng = (minLng + maxLng) / 2;
-    const spanLat = Math.max(0.005, maxLat - minLat);
-    const spanLng = Math.max(0.005, maxLng - minLng);
+  // 3. Live Aggregate KPIs for Bottom-Center Timeline Bar
+  const aggregateKPIs = useMemo(() => {
+    const total = projects.length;
+    let filteredCount = 0;
+    let progressSum = 0;
+    let delayedCount = 0;
+    let totalBudget = 0;
 
-    return { minLat, maxLat, minLng, maxLng, centerLat, centerLng, spanLat, spanLng };
-  }, [validProjects]);
+    projects.forEach(p => {
+      const pace = projectPaceMap.get(p.project_id)?.pace || 'On Track';
+      const comp = Number(p.completion) || 0;
 
-  // 3. Normalization scale: maps dataset cleanly within ~75 scene units in XZ plane
-  const WORLD_SPAN = 75.0;
-  const coordScale = useMemo(() => {
-    const maxSpan = Math.max(geoBounds.spanLat, geoBounds.spanLng);
-    return WORLD_SPAN / maxSpan;
-  }, [geoBounds]);
+      let matches = true;
+      if (phaseFilter === 'not_started') matches = comp === 0;
+      else if (phaseFilter === 'in_progress') matches = comp > 0 && comp < 100;
+      else if (phaseFilter === 'delayed') matches = pace === 'Delayed' || pace === 'At Risk' || p.status === 'Delayed';
+      else if (phaseFilter === 'completed') matches = comp >= 100 || p.status === 'Completed';
 
-  // 4. Color-Coding Helper according to visual encoding requirements
-  const getVisualEncoding = useCallback((p: Project, risk?: ProjectRiskForecast) => {
-    // Delayed / Critical -> Crimson (#e11d48)
-    if (p.status === 'Delayed' || risk?.risk_tier === 'Critical') {
-      return {
-        color: 0xe11d48,
-        emissive: 0x9f1239,
-        tier: 'Delayed / Critical',
-      };
-    }
-    // Elevated Risk / Watch -> Amber (#f59e0b)
-    if (risk?.risk_tier === 'Elevated') {
-      return {
-        color: 0xf59e0b,
-        emissive: 0xb45309,
-        tier: 'Elevated Risk / Watch',
-      };
-    }
-    // Completed / Approved -> Cyan/Blue (#0ea5e9)
-    if (p.status === 'Completed' || p.status === 'Approved') {
-      return {
-        color: 0x0ea5e9,
-        emissive: 0x0284c7,
-        tier: 'Completed / Approved',
-      };
-    }
-    // Running / Normal -> Emerald (#10b981)
-    return {
-      color: 0x10b981,
-      emissive: 0x047857,
-      tier: 'Running / Normal',
-    };
-  }, []);
-
-  // 5. Precompute 3D Project Positions with spiral clustering for co-located projects
-  const projectPositions = useMemo(() => {
-    const map = new Map<string, ProjectPosition>();
-    const clusterMap = new Map<string, Project[]>();
-
-    validProjects.forEach(p => {
-      const lat = Number(p.latitude);
-      const lng = Number(p.longitude);
-      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-      if (!clusterMap.has(key)) clusterMap.set(key, []);
-      clusterMap.get(key)!.push(p);
-    });
-
-    clusterMap.forEach(cluster => {
-      cluster.forEach((p, index) => {
-        const lat = Number(p.latitude);
-        const lng = Number(p.longitude);
-        const baseX = (lng - geoBounds.centerLng) * coordScale;
-        const baseZ = -(lat - geoBounds.centerLat) * coordScale;
-
-        let finalX = baseX;
-        let finalZ = baseZ;
-
-        // Spread co-located towers radially so none overlap
-        if (cluster.length > 1 && index > 0) {
-          const radius = Math.min(3.5, 0.95 * Math.sqrt(index));
-          const angle = index * 2.39996;
-          finalX += radius * Math.cos(angle);
-          finalZ += radius * Math.sin(angle);
+      if (matches) {
+        filteredCount++;
+        progressSum += comp;
+        totalBudget += Number(p.cost) || 0;
+        if (pace === 'Delayed' || pace === 'At Risk' || p.status === 'Delayed') {
+          delayedCount++;
         }
-
-        const cost = Number(p.cost) || 10;
-        const height = Math.max(2.8, Math.min(15.0, (cost / 25.0) * 4.0 + 2.8));
-        const radius = 0.9;
-        const risk = projectRisks.get(p.project_id);
-        const encoding = getVisualEncoding(p, risk);
-
-        map.set(p.project_id, {
-          pos: new THREE.Vector3(finalX, height / 2, finalZ),
-          height,
-          radius,
-          color: encoding.color,
-          emissive: encoding.emissive,
-          tier: encoding.tier,
-        });
-      });
-    });
-
-    return map;
-  }, [validProjects, geoBounds, coordScale, projectRisks, getVisualEncoding]);
-
-  // 6. Dynamically derive real municipal zone bases from the actual active dataset
-  const derivedZones = useMemo(() => {
-    const locMap = new Map<string, { lats: number[]; lngs: number[]; count: number; cost: number }>();
-    validProjects.forEach(p => {
-      const loc = p.location || 'Municipal Center';
-      if (!locMap.has(loc)) {
-        locMap.set(loc, { lats: [], lngs: [], count: 0, cost: 0 });
       }
-      const entry = locMap.get(loc)!;
-      entry.lats.push(Number(p.latitude));
-      entry.lngs.push(Number(p.longitude));
-      entry.count += 1;
-      entry.cost += Number(p.cost) || 0;
     });
 
-    const ZONE_PALETTE = [
-      0x38bdf8, 0x10b981, 0x818cf8, 0xf59e0b, 0x2dd4bf,
-      0xa78bfa, 0xf43f5e, 0x06b6d4, 0xec4899, 0x14b8a6
-    ];
-    let cIdx = 0;
+    return {
+      total,
+      filteredCount,
+      avgProgress: filteredCount > 0 ? Math.round(progressSum / filteredCount) : 0,
+      delayedCount,
+      totalBudget: Math.round(totalBudget),
+    };
+  }, [projects, projectPaceMap, phaseFilter]);
 
-    const zones: Array<{
-      name: string;
-      x: number;
-      z: number;
-      radius: number;
-      color: number;
-      count: number;
-      cost: number;
-    }> = [];
-
-    locMap.forEach((data, name) => {
-      const avgLat = data.lats.reduce((a, b) => a + b, 0) / data.lats.length;
-      const avgLng = data.lngs.reduce((a, b) => a + b, 0) / data.lngs.length;
-      const zX = (avgLng - geoBounds.centerLng) * coordScale;
-      const zZ = -(avgLat - geoBounds.centerLat) * coordScale;
-
-      let maxDist = 2.5;
-      for (let i = 0; i < data.lats.length; i++) {
-        const pX = (data.lngs[i] - geoBounds.centerLng) * coordScale;
-        const pZ = -(data.lats[i] - geoBounds.centerLat) * coordScale;
-        const d = Math.hypot(pX - zX, pZ - zZ);
-        if (d > maxDist) maxDist = d;
-      }
-
-      zones.push({
-        name,
-        x: zX,
-        z: zZ,
-        radius: Math.max(4.0, Math.min(22.0, maxDist + 2.5)),
-        color: ZONE_PALETTE[cIdx % ZONE_PALETTE.length],
-        count: data.count,
-        cost: data.cost,
-      });
-      cIdx++;
-    });
-
-    return zones;
-  }, [validProjects, geoBounds, coordScale]);
-
-  // Three.js References for Animation, Camera HUD & Meshes
+  // Three.js References for Animation, Camera Control Dock & Mesh lookup
   const sceneStateRef = useRef<{
     resetCamera: () => void;
     zoomCamera: (factor: number) => void;
+    setIsometricView: () => void;
+    setTopDownView: () => void;
     focusOnProject: (projId: string) => void;
   } | null>(null);
 
-  const pillarMeshesRef = useRef<THREE.Mesh[]>([]);
-  const selectionBeaconsRef = useRef<Map<string, THREE.Object3D>>(new Map());
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
+
+  const projectMeshesRef = useRef<Map<string, {
+    group: THREE.Group;
+    shellMesh: THREE.Mesh;
+    coreMesh: THREE.Mesh;
+    foundationMesh: THREE.Mesh;
+    haloRing?: THREE.Mesh;
+    beaconMesh: THREE.Mesh;
+    project: Project;
+    paceInfo: ProjectPaceInfo;
+    category: InfrastructureCategory;
+  }>>(new Map());
+
+  const selectionMarkerRef = useRef<{
+    haloRing: THREE.Mesh;
+    laserBeacon: THREE.Line;
+    pointLight: THREE.PointLight;
+  } | null>(null);
 
   // Main Three.js Scene Setup & Lifecycle
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Safety: ensure container has non-zero geometry before creating WebGL context
     const rect = container.getBoundingClientRect();
     const width = rect.width || container.clientWidth || 800;
-    const height = rect.height || container.clientHeight || 550;
+    const height = rect.height || container.clientHeight || 600;
 
-    if (width <= 0 || height <= 0) {
-      return;
-    }
+    if (width <= 0 || height <= 0) return;
 
     setWebGLError(null);
 
+    // 1. WebGL Renderer with High-Contrast ACES Filmic Tone Mapping
     let renderer: THREE.WebGLRenderer;
     try {
       const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
@@ -296,6 +168,9 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       });
       renderer.setSize(width, height, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.shadowMap.enabled = !isMobile;
       if (!isMobile) {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -306,263 +181,414 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       return;
     }
 
-    // Clear any stale children/canvas and mount the fresh canvas
     container.innerHTML = '';
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     renderer.domElement.style.display = 'block';
     container.appendChild(renderer.domElement);
 
-    // 1. Scene & Atmosphere (Deep Midnight-Navy + Subtle Linear Fog)
+    // 2. Midnight Geospatial Scene & Distance Fog
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isDark ? 0x060b16 : 0xf8fafc);
-    // Subtle fog at perimeter: 120 starts, 380 ends. ZERO fog in active 0-90 range
-    scene.fog = new THREE.Fog(isDark ? 0x060b16 : 0xf8fafc, 120, 380);
+    const BG_COLOR = 0x080d1a;
+    scene.background = new THREE.Color(BG_COLOR);
+    // Subtle distance fog keeping all 24 municipal zones crisp and legible
+    scene.fog = new THREE.Fog(BG_COLOR, 85, 290);
 
-    // 2. Camera Setup
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    // 3. Perspective Camera
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.2, 1000);
 
-    // 3. OrbitControls with Smooth Damping
+    // 4. Smooth OrbitControls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
+    controls.dampingFactor = 0.055;
     controls.screenSpacePanning = true;
-    controls.minDistance = 8;
-    controls.maxDistance = 260;
+    controls.minDistance = 6;
+    controls.maxDistance = 270;
     controls.maxPolarAngle = Math.PI / 2.05;
     controls.minPolarAngle = 0.05;
 
-    // 4. Multi-Source High-Contrast Lighting Setup
-    const hemiLight = new THREE.HemisphereLight(
-      isDark ? 0xdbeafe : 0xffffff,
-      isDark ? 0x060b16 : 0x334155,
-      isDark ? 1.5 : 1.3
-    );
+    // 5. Studio-Grade Multi-Source Lighting Rig
+    const hemiLight = new THREE.HemisphereLight(0x60a5fa, 0x080d1a, 1.45);
     scene.add(hemiLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 1.05 : 1.15);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
     scene.add(ambientLight);
 
     const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 640;
-    const keyLight = new THREE.DirectionalLight(0xffffff, isDark ? 2.5 : 2.7);
-    keyLight.position.set(65, 95, 50);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    keyLight.position.set(70, 110, 55);
     keyLight.castShadow = !isMobileDevice;
     if (!isMobileDevice) {
       keyLight.shadow.mapSize.width = 1024;
       keyLight.shadow.mapSize.height = 1024;
       keyLight.shadow.camera.near = 0.5;
-      keyLight.shadow.camera.far = 400;
-      keyLight.shadow.camera.left = -90;
-      keyLight.shadow.camera.right = 90;
-      keyLight.shadow.camera.top = 90;
-      keyLight.shadow.camera.bottom = -90;
-      keyLight.shadow.bias = -0.0005;
+      keyLight.shadow.camera.far = 420;
+      keyLight.shadow.camera.left = -95;
+      keyLight.shadow.camera.right = 95;
+      keyLight.shadow.camera.top = 95;
+      keyLight.shadow.camera.bottom = -95;
+      keyLight.shadow.bias = -0.0004;
     }
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, isDark ? 1.4 : 1.1);
-    fillLight.position.set(-60, 45, -50);
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.25);
+    fillLight.position.set(-70, 50, -60);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xf59e0b, isDark ? 0.9 : 0.7);
-    rimLight.position.set(10, 30, -70);
+    const rimLight = new THREE.DirectionalLight(0xf59e0b, 0.85);
+    rimLight.position.set(20, 35, -80);
     scene.add(rimLight);
 
-    // Orbiting beacon light
-    const beaconLight = new THREE.PointLight(0x06b6d4, 1.4, 120);
-    beaconLight.position.set(0, 25, 0);
-    scene.add(beaconLight);
+    // Orbiting Cyan City Beacon Light
+    const cityBeaconLight = new THREE.PointLight(0x06b6d4, 1.5, 140);
+    cityBeaconLight.position.set(0, 28, 0);
+    scene.add(cityBeaconLight);
 
-    // 5. Urban Ground Floor & Luminous Grid
-    const groundSize = 160;
+    // 6. Tactical GIS Base Plane (Matte Dark Slab + High-Tech Vector Grid)
+    const groundSize = 220;
     const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize);
+
+    // Optional Tactical Canvas Texture
+    const tacticalCanvas = createTacticalGroundCanvasTexture();
+    const tacticalTexture = new THREE.CanvasTexture(tacticalCanvas);
+    tacticalTexture.wrapS = THREE.ClampToEdgeWrapping;
+    tacticalTexture.wrapT = THREE.ClampToEdgeWrapping;
+
     const groundMat = new THREE.MeshStandardMaterial({
-      color: isDark ? 0x0b1329 : 0xe2e8f0,
-      roughness: 0.8,
-      metalness: 0.2,
+      color: 0x080d1a,
+      map: showTacticalBase ? tacticalTexture : null,
+      roughness: 0.82,
+      metalness: 0.18,
     });
+
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
     ground.receiveShadow = !isMobileDevice;
     scene.add(ground);
 
-    const grid = new THREE.GridHelper(
-      groundSize,
-      40,
-      isDark ? 0x0284c7 : 0x0284c7,
-      isDark ? 0x172554 : 0xcbd5e1
-    );
-    grid.position.y = 0;
-    scene.add(grid);
+    // Major & Minor Tactical Coordinate Grids
+    const majorGrid = new THREE.GridHelper(groundSize, 22, 0x0ea5e9, 0x1e293b);
+    majorGrid.position.y = 0.01;
+    (majorGrid.material as THREE.Material).transparent = true;
+    (majorGrid.material as THREE.Material).opacity = 0.4;
+    scene.add(majorGrid);
 
-    // 6. Dynamic Municipal Zone Platforms
+    const minorGrid = new THREE.GridHelper(groundSize, 88, 0x1e293b, 0x0f172a);
+    minorGrid.position.y = 0.01;
+    (minorGrid.material as THREE.Material).transparent = true;
+    (minorGrid.material as THREE.Material).opacity = 0.22;
+    scene.add(minorGrid);
+
+    // 7. 24 Municipal Zone Elevated Pads & Floating Billboard Badges
     const zoneGroup = new THREE.Group();
-    derivedZones.forEach(z => {
-      // Outer illuminated ground ring
-      const ringGeo = new THREE.RingGeometry(z.radius * 0.92, z.radius, 36);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: z.color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: isDark ? 0.45 : 0.6,
-      });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(z.x, 0.02, z.z);
-      zoneGroup.add(ring);
+    const zoneBadgeSprites: THREE.Sprite[] = [];
 
-      // Low extruded platform disk
-      const padGeo = new THREE.CylinderGeometry(z.radius * 0.88, z.radius * 0.92, 0.2, 32);
+    zones.forEach(z => {
+      // Elevated Translucent Ground Pad
+      const padGeo = new THREE.CylinderGeometry(z.radius * 0.94, z.radius * 0.98, 0.22, 36);
       const padMat = new THREE.MeshStandardMaterial({
-        color: isDark ? 0x131d31 : 0xe2e8f0,
+        color: 0x0c1527,
         transparent: true,
-        opacity: isDark ? 0.5 : 0.65,
-        roughness: 0.6,
+        opacity: 0.72,
+        roughness: 0.5,
         metalness: 0.2,
       });
       const pad = new THREE.Mesh(padGeo, padMat);
-      pad.position.set(z.x, 0.1, z.z);
+      pad.position.set(z.worldX, 0.11, z.worldZ);
       pad.receiveShadow = !isMobileDevice;
       zoneGroup.add(pad);
+
+      // Outer Glowing Zone Perimeter Ring
+      const ringGeo = new THREE.RingGeometry(z.radius * 0.95, z.radius, 40);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: z.colorHex,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.55,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(z.worldX, 0.24, z.worldZ);
+      zoneGroup.add(ring);
+
+      // Floating Zone Billboard Badge Sprite
+      if (showZoneBadges) {
+        const badgeCanvas = createZoneBadgeCanvasTexture(z.name, z.projectCount, z.totalBudgetCr, z.colorStr);
+        const badgeTex = new THREE.CanvasTexture(badgeCanvas);
+        badgeTex.minFilter = THREE.LinearFilter;
+        const spriteMat = new THREE.SpriteMaterial({
+          map: badgeTex,
+          transparent: true,
+          depthWrite: false,
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(z.worldX, 3.4, z.worldZ - z.radius * 0.78);
+        sprite.scale.set(9.0, 2.8, 1.0);
+        zoneGroup.add(sprite);
+        zoneBadgeSprites.push(sprite);
+      }
     });
     scene.add(zoneGroup);
 
-    // 7. 3D Architectural Project Towers (Color-Coded to Legend)
-    const pillarGroup = new THREE.Group();
-    const pillarMeshes: THREE.Mesh[] = [];
-    const selectionMap = new Map<string, THREE.Object3D>();
+    // 8. Procedural Architectural Silhouettes (Dual-Layer: Ghost Scope Shell + Solid Core)
+    const buildingsGroup = new THREE.Group();
+    const raycastTargets: THREE.Mesh[] = [];
+    const projectMeshesMap = new Map<string, any>();
+    const delayedHalos: THREE.Mesh[] = [];
 
-    validProjects.forEach(p => {
+    projects.forEach(p => {
       const posData = projectPositions.get(p.project_id);
       if (!posData) return;
-      const { pos, height, radius, color, emissive } = posData;
-      const risk = projectRisks.get(p.project_id);
+
+      const paceInfo = projectPaceMap.get(p.project_id) || calculateProjectPace(p);
+      const colors = resolveProjectColor(p, paceInfo, colorByMode);
+      const { worldX, worldZ, anchorX, anchorZ, isDeclustered, category, height } = posData;
+
+      const comp = Math.max(0, Math.min(100, Number(p.completion) || 0));
+      // Solid core fills upward with progress. Minimum 0.6 base foundation plinth so 0% progress projects are never flat!
+      const coreHeight = Math.max(0.65, height * (comp / 100));
+
       const isSelected = selectedProjectId === p.project_id;
+      const isDelayed = paceInfo.pace === 'Delayed' || paceInfo.pace === 'At Risk' || p.status === 'Delayed';
 
-      // Architectural 8-sided faceted prism tower
-      const towerGeo = new THREE.CylinderGeometry(radius * 0.75, radius * 1.05, height, 8);
-      const towerMat = new THREE.MeshStandardMaterial({
-        color: isSelected ? 0x38bdf8 : color,
-        emissive: isSelected ? 0x38bdf8 : emissive,
-        emissiveIntensity: isSelected ? 1.0 : 0.5,
-        roughness: 0.25,
-        metalness: 0.4,
+      // Building Root Group
+      const bGroup = new THREE.Group();
+      bGroup.position.set(worldX, 0, worldZ);
+
+      // A. Ground Foundation Plinth (Solid illuminated baseline)
+      const plinthGeo = new THREE.CylinderGeometry(1.65, 1.85, 0.35, 16);
+      const plinthMat = new THREE.MeshStandardMaterial({
+        color: 0x111c33,
+        roughness: 0.6,
+        metalness: 0.5,
       });
+      const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+      plinth.position.y = 0.175;
+      plinth.receiveShadow = !isMobileDevice;
+      bGroup.add(plinth);
 
-      const pillar = new THREE.Mesh(towerGeo, towerMat);
-      pillar.position.set(pos.x, height / 2, pos.z);
-      pillar.castShadow = !isMobileDevice;
-      pillar.receiveShadow = !isMobileDevice;
-      pillar.userData = {
-        project: p,
-        risk,
-        height,
-        radius,
-        baseColor: color,
-        baseEmissive: emissive,
-      };
-
-      pillarGroup.add(pillar);
-      pillarMeshes.push(pillar);
-
-      // Top glowing spherical obstruction beacon
-      const beaconGeo = new THREE.SphereGeometry(radius * 0.7, 12, 12);
-      const beaconMat = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0xffffff : color,
-      });
-      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-      beacon.position.set(pos.x, height + 0.35, pos.z);
-      pillarGroup.add(beacon);
-
-      // Metallic foundation disc
-      const padGeo = new THREE.CylinderGeometry(radius * 1.35, radius * 1.45, 0.2, 12);
-      const padMat = new THREE.MeshStandardMaterial({
-        color: isDark ? 0x1e293b : 0x94a3b8,
-        roughness: 0.5,
-        metalness: 0.7,
-      });
-      const pad = new THREE.Mesh(padGeo, padMat);
-      pad.position.set(pos.x, 0.1, pos.z);
-      pad.receiveShadow = !isMobileDevice;
-      pillarGroup.add(pad);
-
-      // Base illuminated ring matching project status
-      const baseRingGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.7, 24);
+      // Base Status Ring
+      const baseRingGeo = new THREE.RingGeometry(1.6, 2.0, 24);
       const baseRingMat = new THREE.MeshBasicMaterial({
-        color: color,
+        color: colors.hex,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.65,
+        opacity: 0.75,
       });
       const baseRing = new THREE.Mesh(baseRingGeo, baseRingMat);
       baseRing.rotation.x = -Math.PI / 2;
-      baseRing.position.set(pos.x, 0.05, pos.z);
-      pillarGroup.add(baseRing);
+      baseRing.position.y = 0.36;
+      bGroup.add(baseRing);
 
-      // Selected Glowing Cyan Halo Ring
-      const selectHaloGeo = new THREE.RingGeometry(radius * 1.8, radius * 2.5, 32);
-      const selectHaloMat = new THREE.MeshBasicMaterial({
-        color: 0x38bdf8,
-        side: THREE.DoubleSide,
+      // B. Procedural Architectural Geometry by Category
+      let shellGeo: THREE.BufferGeometry;
+      let coreGeo: THREE.BufferGeometry;
+      let beaconGeo: THREE.BufferGeometry;
+      let beaconY = height + 0.5;
+
+      switch (category) {
+        case 'Healthcare':
+          // Cross-shaped clinical block
+          shellGeo = new THREE.BoxGeometry(1.6, height, 1.6);
+          coreGeo = new THREE.BoxGeometry(1.4, coreHeight, 1.4);
+          beaconGeo = new THREE.SphereGeometry(0.55, 12, 12);
+          beaconY = height + 0.45;
+          break;
+
+        case 'Education':
+          // Multi-wing stepped academic campus block
+          shellGeo = new THREE.BoxGeometry(2.2, height, 1.5);
+          coreGeo = new THREE.BoxGeometry(2.0, coreHeight, 1.35);
+          beaconGeo = new THREE.ConeGeometry(0.75, 1.0, 4);
+          beaconY = height + 0.6;
+          break;
+
+        case 'Transport':
+          // Elevated transit span / dual pylon tower
+          shellGeo = new THREE.BoxGeometry(2.6, height, 0.9);
+          coreGeo = new THREE.BoxGeometry(2.4, coreHeight, 0.75);
+          beaconGeo = new THREE.BoxGeometry(2.7, 0.3, 1.1);
+          beaconY = height + 0.25;
+          break;
+
+        case 'Utilities':
+          // Cylindrical water tower / reservoir column
+          shellGeo = new THREE.CylinderGeometry(1.0, 1.25, height, 16);
+          coreGeo = new THREE.CylinderGeometry(0.85, 1.1, coreHeight, 16);
+          beaconGeo = new THREE.SphereGeometry(1.1, 16, 12);
+          beaconY = height + 0.7;
+          break;
+
+        case 'Recreation':
+          // Stepped tiered hexagonal pavilion / eco terraces
+          shellGeo = new THREE.CylinderGeometry(1.7, 2.0, height, 6);
+          coreGeo = new THREE.CylinderGeometry(1.5, 1.8, coreHeight, 6);
+          beaconGeo = new THREE.CylinderGeometry(1.6, 0.8, 0.25, 6);
+          beaconY = height + 0.3;
+          break;
+
+        case 'Civic':
+        default:
+          // Modern stepped administrative skyscraper
+          shellGeo = new THREE.BoxGeometry(1.8, height, 1.8);
+          coreGeo = new THREE.BoxGeometry(1.55, coreHeight, 1.55);
+          beaconGeo = new THREE.ConeGeometry(0.6, 1.4, 4);
+          beaconY = height + 0.7;
+          break;
+      }
+
+      // Outer Translucent Wireframe / Glass Shell (100% Planned Scope)
+      const shellMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0x38bdf8 : colors.hex,
         transparent: true,
-        opacity: isSelected ? 0.9 : 0.0,
+        opacity: isSelected ? 0.45 : 0.24,
+        roughness: 0.18,
+        metalness: 0.35,
       });
-      const selectHalo = new THREE.Mesh(selectHaloGeo, selectHaloMat);
-      selectHalo.rotation.x = -Math.PI / 2;
-      selectHalo.position.set(pos.x, 0.06, pos.z);
-      selectHalo.visible = isSelected;
-      pillarGroup.add(selectHalo);
-      selectionMap.set(p.project_id, selectHalo);
+      const shellMesh = new THREE.Mesh(shellGeo, shellMat);
+      shellMesh.position.y = 0.35 + height / 2;
+      shellMesh.castShadow = !isMobileDevice;
+      shellMesh.receiveShadow = !isMobileDevice;
+      bGroup.add(shellMesh);
+
+      // Inner Solid Illuminated Core (Fills upward with actual completion %)
+      const coreMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0x38bdf8 : colors.hex,
+        emissive: isSelected ? 0x0284c7 : colors.emissive,
+        emissiveIntensity: isSelected ? 1.2 : 0.8,
+        roughness: 0.3,
+        metalness: 0.4,
+      });
+      const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+      coreMesh.position.y = 0.35 + coreHeight / 2;
+      coreMesh.castShadow = !isMobileDevice;
+      coreMesh.receiveShadow = !isMobileDevice;
+      bGroup.add(coreMesh);
+
+      // Top Illuminated Crown / Beacon
+      const beaconMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0xffffff : colors.hex,
+        emissive: isSelected ? 0x38bdf8 : colors.emissive,
+        emissiveIntensity: 1.0,
+      });
+      const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+      beaconMesh.position.y = beaconY;
+      bGroup.add(beaconMesh);
+
+      // C. Animated Pulsing Ground Halo for Delayed / Critical Projects
+      let haloMesh: THREE.Mesh | undefined;
+      if (isDelayed) {
+        const haloGeo = new THREE.RingGeometry(2.1, 2.7, 32);
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: 0xef4444,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.75,
+        });
+        haloMesh = new THREE.Mesh(haloGeo, haloMat);
+        haloMesh.rotation.x = -Math.PI / 2;
+        haloMesh.position.y = 0.37;
+        bGroup.add(haloMesh);
+        delayedHalos.push(haloMesh);
+      }
+
+      // D. Subtle Ground Connector Line to Geographic Anchor (for de-clustered projects)
+      if (isDeclustered) {
+        const linePts = [
+          new THREE.Vector3(anchorX - worldX, 0.08, anchorZ - worldZ),
+          new THREE.Vector3(0, 0.08, 0),
+        ];
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(linePts);
+        const lineMat = new THREE.LineBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.45,
+        });
+        const line = new THREE.Line(lineGeo, lineMat);
+        bGroup.add(line);
+
+        // Ground Anchor Dot
+        const dotGeo = new THREE.CircleGeometry(0.35, 12);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.rotation.x = -Math.PI / 2;
+        dot.position.set(anchorX - worldX, 0.09, anchorZ - worldZ);
+        bGroup.add(dot);
+      }
+
+      // Attach User Data for Raycasting
+      const userData = {
+        project: p,
+        paceInfo,
+        category,
+        colorStr: colors.str,
+      };
+      shellMesh.userData = userData;
+      coreMesh.userData = userData;
+
+      raycastTargets.push(shellMesh, coreMesh);
+      buildingsGroup.add(bGroup);
+
+      projectMeshesMap.set(p.project_id, {
+        group: bGroup,
+        shellMesh,
+        coreMesh,
+        foundationMesh: plinth,
+        haloRing: haloMesh,
+        beaconMesh,
+        project: p,
+        paceInfo,
+        category,
+      });
     });
 
-    scene.add(pillarGroup);
-    pillarMeshesRef.current = pillarMeshes;
-    selectionBeaconsRef.current = selectionMap;
+    scene.add(buildingsGroup);
+    projectMeshesRef.current = projectMeshesMap;
 
-    // 8. Curved 3D DAG Dependency Arcs
-    const arcGroup = new THREE.Group();
-    const compMap = new Map(components.map(c => [c.component_id, c]));
-    const projectPairs = new Set<string>();
-
-    components.forEach(c => {
-      if (!c.depends_on || !c.project_id) return;
-      const parentComp = compMap.get(c.depends_on);
-      if (!parentComp || !parentComp.project_id || parentComp.project_id === c.project_id) return;
-
-      const pairKey = `${parentComp.project_id}->${c.project_id}`;
-      if (projectPairs.has(pairKey)) return;
-      projectPairs.add(pairKey);
-
-      const posA = projectPositions.get(parentComp.project_id)?.pos;
-      const posB = projectPositions.get(c.project_id)?.pos;
-      if (!posA || !posB) return;
-
-      const midPoint = new THREE.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
-      const dist = posA.distanceTo(posB);
-      midPoint.y += Math.max(3.5, dist * 0.35);
-
-      const curve = new THREE.CatmullRomCurve3([posA, midPoint, posB]);
-      const points = curve.getPoints(36);
-      const curveGeo = new THREE.BufferGeometry().setFromPoints(points);
-      const curveMat = new THREE.LineBasicMaterial({
-        color: 0x38bdf8,
-        transparent: true,
-        opacity: isDark ? 0.6 : 0.75,
-        linewidth: 2,
-      });
-
-      const line = new THREE.Line(curveGeo, curveMat);
-      arcGroup.add(line);
+    // 9. Selected Project Glowing Cyan Laser & Ring
+    const selRingGeo = new THREE.RingGeometry(2.8, 3.6, 36);
+    const selRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
     });
-    scene.add(arcGroup);
+    const selRing = new THREE.Mesh(selRingGeo, selRingMat);
+    selRing.rotation.x = -Math.PI / 2;
+    selRing.position.y = 0.4;
+    selRing.visible = false;
+    scene.add(selRing);
 
-    // 9. Auto-Framing using Validated THREE.Box3 Bounds
+    // Skyward Laser Line
+    const laserPts = [new THREE.Vector3(0, 0.5, 0), new THREE.Vector3(0, 45, 0)];
+    const laserGeo = new THREE.BufferGeometry().setFromPoints(laserPts);
+    const laserMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const laser = new THREE.Line(laserGeo, laserMat);
+    laser.visible = false;
+    scene.add(laser);
+
+    // Point Light for Selected Building
+    const selLight = new THREE.PointLight(0x38bdf8, 2.5, 35);
+    selLight.position.set(0, 15, 0);
+    selLight.visible = false;
+    scene.add(selLight);
+
+    selectionMarkerRef.current = {
+      haloRing: selRing,
+      laserBeacon: laser,
+      pointLight: selLight,
+    };
+
+    // 10. Auto-Framing using Bounding Box
     const box = new THREE.Box3();
-    if (pillarMeshes.length > 0) {
-      box.setFromObject(pillarGroup);
+    if (raycastTargets.length > 0) {
+      box.setFromObject(buildingsGroup);
     }
-
     const center = new THREE.Vector3();
     const size = new THREE.Vector3();
     if (!box.isEmpty()) {
@@ -570,26 +596,86 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       box.getSize(size);
     } else {
       center.set(0, 0, 0);
-      size.set(50, 10, 50);
+      size.set(60, 15, 60);
     }
 
-    const maxDim = Math.max(size.x, size.z, 28);
+    const maxDim = Math.max(size.x, size.z, 30);
     const fov = camera.fov * (Math.PI / 180);
     let camDist = (maxDim / 2) / Math.tan(fov / 2);
-    camDist = Math.max(45, camDist * 1.25);
+    camDist = Math.max(48, camDist * 1.25);
 
     const defaultTarget = new THREE.Vector3(center.x, 2.0, center.z);
     const defaultCamPos = new THREE.Vector3(
       center.x + camDist * 0.62,
-      center.y + camDist * 0.75,
-      center.z + camDist * 0.82
+      center.y + camDist * 0.72,
+      center.z + camDist * 0.78
     );
 
     camera.position.copy(defaultCamPos);
     controls.target.copy(defaultTarget);
     controls.update();
 
-    // 10. Raycaster for Hover & Selection
+    // 11. Smooth Camera Transition Controller
+    let camAnim: {
+      startPos: THREE.Vector3;
+      targetPos: THREE.Vector3;
+      startTarget: THREE.Vector3;
+      targetLookAt: THREE.Vector3;
+      startTime: number;
+      duration: number;
+    } | null = null;
+
+    const startCameraLerp = (toPos: THREE.Vector3, toTarget: THREE.Vector3, duration: number = 850) => {
+      camAnim = {
+        startPos: camera.position.clone(),
+        targetPos: toPos.clone(),
+        startTarget: controls.target.clone(),
+        targetLookAt: toTarget.clone(),
+        startTime: performance.now(),
+        duration,
+      };
+    };
+
+    // Camera Dock Actions
+    sceneStateRef.current = {
+      resetCamera: () => {
+        startCameraLerp(defaultCamPos, defaultTarget, 900);
+      },
+      zoomCamera: (factor: number) => {
+        const offset = camera.position.clone().sub(controls.target);
+        offset.multiplyScalar(factor);
+        offset.clampLength(8, 250);
+        const newPos = controls.target.clone().add(offset);
+        startCameraLerp(newPos, controls.target, 550);
+      },
+      setIsometricView: () => {
+        const isoPos = new THREE.Vector3(
+          controls.target.x + camDist * 0.72,
+          controls.target.y + camDist * 0.82,
+          controls.target.z + camDist * 0.72
+        );
+        startCameraLerp(isoPos, controls.target, 900);
+      },
+      setTopDownView: () => {
+        const topPos = new THREE.Vector3(
+          controls.target.x,
+          controls.target.y + camDist * 1.35,
+          controls.target.z + 0.05
+        );
+        startCameraLerp(topPos, controls.target, 950);
+      },
+      focusOnProject: (projId: string) => {
+        const entry = projectMeshesMap.get(projId);
+        if (entry) {
+          const bPos = entry.group.position;
+          const targetLookAt = new THREE.Vector3(bPos.x, 3.5, bPos.z);
+          const targetCam = new THREE.Vector3(bPos.x + 18, bPos.y + 16, bPos.z + 20);
+          startCameraLerp(targetCam, targetLookAt, 850);
+        }
+      },
+    };
+
+    // 12. Raycasting for Hover & Click
     const raycaster = new THREE.Raycaster();
     const mousePos = new THREE.Vector2();
 
@@ -602,22 +688,26 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       mousePos.y = -((mouseY - bRect.top) / bRect.height) * 2 + 1;
 
       raycaster.setFromCamera(mousePos, camera);
-      const intersects = raycaster.intersectObjects(pillarMeshes, false);
+      const intersects = raycaster.intersectObjects(raycastTargets, false);
 
       if (intersects.length > 0) {
         const hit = intersects[0].object as THREE.Mesh;
-        const { project, risk } = hit.userData;
-        setHoveredProject({
-          project,
-          risk,
-          screenX: mouseX - bRect.left,
-          screenY: mouseY - bRect.top,
-        });
-        container.style.cursor = 'pointer';
-      } else {
-        setHoveredProject(null);
-        container.style.cursor = 'default';
+        const data = hit.userData;
+        if (data && data.project) {
+          setHoveredProject({
+            project: data.project,
+            paceInfo: data.paceInfo,
+            category: data.category,
+            colorStr: data.colorStr,
+            screenX: mouseX - bRect.left,
+            screenY: mouseY - bRect.top,
+          });
+          container.style.cursor = 'pointer';
+          return;
+        }
       }
+      setHoveredProject(null);
+      container.style.cursor = 'default';
     };
 
     const onClick = (e: MouseEvent) => {
@@ -626,13 +716,14 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       mousePos.y = -((e.clientY - bRect.top) / bRect.height) * 2 + 1;
 
       raycaster.setFromCamera(mousePos, camera);
-      const intersects = raycaster.intersectObjects(pillarMeshes, false);
+      const intersects = raycaster.intersectObjects(raycastTargets, false);
 
       if (intersects.length > 0) {
         const hit = intersects[0].object as THREE.Mesh;
-        const { project } = hit.userData;
-        if (project) {
-          onSelectProject(project.project_id);
+        const data = hit.userData;
+        if (data && data.project) {
+          onSelectProject(data.project.project_id);
+          sceneStateRef.current?.focusOnProject(data.project.project_id);
         }
       }
     };
@@ -640,31 +731,7 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     container.addEventListener('mousemove', onPointerMove);
     container.addEventListener('click', onClick);
 
-    // Save camera controls to ref for HUD buttons
-    sceneStateRef.current = {
-      resetCamera: () => {
-        camera.position.copy(defaultCamPos);
-        controls.target.copy(defaultTarget);
-        controls.update();
-      },
-      zoomCamera: (factor: number) => {
-        const offset = camera.position.clone().sub(controls.target);
-        offset.multiplyScalar(factor);
-        offset.clampLength(10, 240);
-        camera.position.copy(controls.target).add(offset);
-        controls.update();
-      },
-      focusOnProject: (projId: string) => {
-        const posData = projectPositions.get(projId);
-        if (posData) {
-          controls.target.set(posData.pos.x, posData.pos.y, posData.pos.z);
-          camera.position.set(posData.pos.x + 18, posData.pos.y + 16, posData.pos.z + 20);
-          controls.update();
-        }
-      },
-    };
-
-    // 11. Responsive ResizeObserver
+    // 13. Responsive ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
       if (!container) return;
       const curW = container.clientWidth;
@@ -677,14 +744,18 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
     });
     resizeObserver.observe(container);
 
-    // 12. Render & Animation Loop (Guaranteed First-Frame Render)
+    // 14. 60 FPS Render & Animation Loop
     let animationFrameId: number;
     let isRunning = true;
     const clock = new THREE.Clock();
 
-    // Render immediately on mount
+    // Render immediate first frame
     controls.update();
     renderer.render(scene, camera);
+
+    const cubicEaseInOut = (t: number) => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
 
     const animate = () => {
       if (!isRunning) return;
@@ -692,16 +763,40 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
 
       if (isActiveRef.current) {
         const elapsedTime = clock.getElapsedTime();
-        beaconLight.position.x = Math.sin(elapsedTime * 0.45) * 20;
-        beaconLight.position.z = Math.cos(elapsedTime * 0.45) * 20;
 
-        controls.update();
+        // Orbiting City Beacon Light
+        cityBeaconLight.position.x = Math.sin(elapsedTime * 0.4) * 25;
+        cityBeaconLight.position.z = Math.cos(elapsedTime * 0.4) * 25;
+
+        // Pulsing Delayed Halos
+        const pulseOpacity = 0.35 + 0.35 * Math.sin(elapsedTime * 3.5);
+        delayedHalos.forEach(h => {
+          (h.material as THREE.MeshBasicMaterial).opacity = pulseOpacity;
+        });
+
+        // Smooth Camera Transition Lerp
+        if (camAnim) {
+          const now = performance.now();
+          const progress = Math.min(1.0, (now - camAnim.startTime) / camAnim.duration);
+          const ease = cubicEaseInOut(progress);
+
+          camera.position.lerpVectors(camAnim.startPos, camAnim.targetPos, ease);
+          controls.target.lerpVectors(camAnim.startTarget, camAnim.targetLookAt, ease);
+          controls.update();
+
+          if (progress >= 1.0) {
+            camAnim = null;
+          }
+        } else {
+          controls.update();
+        }
+
         renderer.render(scene, camera);
       }
     };
     animate();
 
-    // 13. Clean Cleanup on Unmount
+    // 15. Cleanup on Unmount
     return () => {
       isRunning = false;
       cancelAnimationFrame(animationFrameId);
@@ -714,55 +809,80 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
       renderer.dispose();
       groundGeo.dispose();
       groundMat.dispose();
-      grid.dispose();
-
-      pillarMeshes.forEach(m => {
-        m.geometry.dispose();
-        if (Array.isArray(m.material)) m.material.forEach(mat => mat.dispose());
-        else m.material.dispose();
-      });
+      majorGrid.dispose();
+      minorGrid.dispose();
+      tacticalTexture.dispose();
 
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [validProjects, components, isDark, coordScale, geoBounds, projectPositions, derivedZones, onSelectProject]);
+  }, [projects, components, isDark, colorByMode, layoutData, onSelectProject, showTacticalBase, showZoneBadges]);
 
-  // Synchronize Project Selection without Rebuilding the WebGL Scene
+  // Synchronize Project Selection (Update Halos & Focus without Rebuilding WebGL)
   useEffect(() => {
+    const marker = selectionMarkerRef.current;
+    if (!marker) return;
+
     if (!selectedProjectId) {
-      selectionBeaconsRef.current.forEach(halo => {
-        halo.visible = false;
-      });
+      marker.haloRing.visible = false;
+      marker.laserBeacon.visible = false;
+      marker.pointLight.visible = false;
       return;
     }
 
-    pillarMeshesRef.current.forEach(mesh => {
-      const isSelected = mesh.userData?.project?.project_id === selectedProjectId;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      if (mat) {
-        mat.emissive.setHex(isSelected ? 0x38bdf8 : mesh.userData.baseEmissive);
-        mat.emissiveIntensity = isSelected ? 1.0 : 0.5;
+    const entry = projectMeshesRef.current.get(selectedProjectId);
+    if (entry) {
+      const bPos = entry.group.position;
+      marker.haloRing.position.set(bPos.x, 0.4, bPos.z);
+      marker.haloRing.visible = true;
+
+      marker.laserBeacon.position.set(bPos.x, 0, bPos.z);
+      marker.laserBeacon.visible = true;
+
+      marker.pointLight.position.set(bPos.x, 14, bPos.z);
+      marker.pointLight.visible = true;
+
+      if (isActive) {
+        sceneStateRef.current?.focusOnProject(selectedProjectId);
       }
-    });
-
-    selectionBeaconsRef.current.forEach((halo, pid) => {
-      halo.visible = pid === selectedProjectId;
-    });
-
-    if (isActive) {
-      sceneStateRef.current?.focusOnProject(selectedProjectId);
     }
   }, [selectedProjectId, isActive]);
 
+  // Update Visual Opacity when Phase Filter changes
+  useEffect(() => {
+    projectMeshesRef.current.forEach(({ shellMesh, coreMesh, project, paceInfo }) => {
+      const comp = Number(project.completion) || 0;
+      let matches = true;
+
+      if (phaseFilter === 'not_started') matches = comp === 0;
+      else if (phaseFilter === 'in_progress') matches = comp > 0 && comp < 100;
+      else if (phaseFilter === 'delayed') matches = paceInfo.pace === 'Delayed' || paceInfo.pace === 'At Risk' || project.status === 'Delayed';
+      else if (phaseFilter === 'completed') matches = comp >= 100 || project.status === 'Completed';
+
+      const sMat = shellMesh.material as THREE.MeshStandardMaterial;
+      const cMat = coreMesh.material as THREE.MeshStandardMaterial;
+
+      if (matches) {
+        sMat.opacity = 0.25;
+        cMat.opacity = 1.0;
+        cMat.transparent = false;
+      } else {
+        sMat.opacity = 0.06;
+        cMat.opacity = 0.12;
+        cMat.transparent = true;
+      }
+    });
+  }, [phaseFilter]);
+
   return (
-    <div className="relative w-full h-[50dvh] min-h-[350px] sm:h-[500px] lg:h-[650px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 select-none touch-none">
+    <div className="relative w-full h-[54dvh] min-h-[380px] sm:h-[500px] lg:h-[650px] rounded-2xl overflow-hidden border border-slate-800 bg-[#080d1a] select-none touch-none shadow-2xl">
       {/* 3D WebGL Canvas Container */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
-      {/* WebGL Failure Fallback UI */}
+      {/* WebGL Hardware Acceleration Error Fallback */}
       {webGLError && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-slate-950/95 text-center text-slate-300 space-y-3">
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 bg-[#080d1a]/95 text-center text-slate-300 space-y-3">
           <AlertTriangle className="w-10 h-10 text-amber-400" />
           <h4 className="text-sm font-bold text-white">WebGL Initialization Required</h4>
           <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
@@ -778,61 +898,244 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
         </div>
       )}
 
-      {/* Floating 3D Navigation Controls Bar */}
-      <div className="absolute top-4 right-4 flex items-center space-x-1.5 p-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-slate-300 shadow-xl z-20">
-        <button
-          onClick={() => sceneStateRef.current?.zoomCamera(0.82)}
-          title="Zoom In (+)"
-          className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
-        >
-          <ZoomIn className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => sceneStateRef.current?.zoomCamera(1.22)}
-          title="Zoom Out (-)"
-          className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
-        >
-          <ZoomOut className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => sceneStateRef.current?.resetCamera()}
-          title="Reset Camera Angle (Auto-Frame All Projects)"
-          className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+      {/* TOP-RIGHT: Tactical Camera Control Dock */}
+      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex flex-col space-y-2 pointer-events-auto">
+        <div className="flex items-center space-x-1 p-1 rounded-xl bg-slate-900/85 backdrop-blur-md border border-slate-800 text-slate-300 shadow-xl">
+          <button
+            onClick={() => sceneStateRef.current?.zoomCamera(0.8)}
+            title="Zoom In (+)"
+            className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => sceneStateRef.current?.zoomCamera(1.25)}
+            title="Zoom Out (-)"
+            className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => sceneStateRef.current?.setIsometricView()}
+            title="45° Isometric View"
+            className="px-2 py-1 rounded-lg text-[10px] font-bold font-mono hover:bg-slate-800 hover:text-white text-slate-400 transition-colors"
+          >
+            ISO
+          </button>
+          <button
+            onClick={() => sceneStateRef.current?.setTopDownView()}
+            title="Top-Down Plan View"
+            className="px-2 py-1 rounded-lg text-[10px] font-bold font-mono hover:bg-slate-800 hover:text-white text-slate-400 transition-colors"
+          >
+            PLAN
+          </button>
+          <button
+            onClick={() => sceneStateRef.current?.resetCamera()}
+            title="Reset Auto-Frame View"
+            className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Tactical Map Base Toggle */}
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setShowTacticalBase(!showTacticalBase)}
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-semibold backdrop-blur-md transition-all shadow-md ${
+              showTacticalBase
+                ? 'bg-slate-900/85 border-cyan-500/40 text-cyan-400'
+                : 'bg-slate-900/85 border-slate-800 text-slate-400'
+            }`}
+            title="Toggle Tactical Radar & Waterway Map Base"
+          >
+            <Compass className="w-3 h-3 text-cyan-400" />
+            <span>Map Base: {showTacticalBase ? 'Radar ON' : 'Grid'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* 3D Legend & Status Overlay (Desktop / Tablet only) */}
-      <div className="absolute bottom-4 left-4 p-3 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-800 text-xs text-slate-300 shadow-xl z-20 space-y-2 pointer-events-auto hidden sm:block">
-        <div className="flex items-center space-x-2 font-medium text-slate-200 pb-1 border-b border-slate-800">
-          <Layers className="w-3.5 h-3.5 text-cyan-400" />
-          <span>3D City Twin Visual Encoding ({validProjects.length} Projects)</span>
-        </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm" />
-            <span>Running / Normal</span>
+      {/* BOTTOM-LEFT: Color-By Mode Switcher & Category Legend */}
+      <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 z-20 space-y-2 pointer-events-auto max-w-[280px] sm:max-w-xs">
+        {/* Color-By Selector */}
+        <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 text-xs text-slate-300 shadow-xl space-y-2">
+          <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="flex items-center space-x-1.5">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Color Encoding</span>
+            </span>
+            <span className="font-mono text-cyan-400">{projects.length} Projects</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-sm" />
-            <span>Completed / Approved</span>
+
+          <div className="grid grid-cols-3 gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-semibold">
+            <button
+              onClick={() => setColorByMode('status')}
+              className={`py-1 rounded text-center transition-all ${
+                colorByMode === 'status'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Pace & Status
+            </button>
+            <button
+              onClick={() => setColorByMode('agency')}
+              className={`py-1 rounded text-center transition-all ${
+                colorByMode === 'agency'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              5 Agencies
+            </button>
+            <button
+              onClick={() => setColorByMode('progress')}
+              className={`py-1 rounded text-center transition-all ${
+                colorByMode === 'progress'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Progress %
+            </button>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm" />
-            <span>Elevated Risk / Watch</span>
+
+          {/* Color Key Explanation */}
+          {colorByMode === 'status' && (
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] pt-1 text-slate-300">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>On Track / Normal</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                <span>Ahead of Plan</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span>Delayed / Behind</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span>Completed</span>
+              </div>
+            </div>
+          )}
+
+          {colorByMode === 'agency' && (
+            <div className="grid grid-cols-3 gap-1 text-[10px] pt-1 text-slate-300 font-mono">
+              {Object.entries(AGENCY_COLORS).map(([code, meta]) => (
+                <div key={code} className="flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.str }} />
+                  <span>{code}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {colorByMode === 'progress' && (
+            <div className="grid grid-cols-4 gap-1 text-[9px] pt-1 text-slate-300 font-mono text-center">
+              <span className="px-1 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800">0-24%</span>
+              <span className="px-1 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800">25-49%</span>
+              <span className="px-1 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">50-74%</span>
+              <span className="px-1 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">75-100%</span>
+            </div>
+          )}
+
+          {/* Infrastructure Category Shape Key */}
+          <div className="pt-1.5 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-1">
+            <div className="font-semibold text-slate-300 flex items-center justify-between">
+              <span>Architectural Silhouettes:</span>
+              <span className="text-[9px] text-cyan-400 font-mono">Ghost = Scope • Solid = Core</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-[10px]">
+              {Object.entries(CATEGORY_META).map(([key, meta]) => (
+                <div key={key} className="flex items-center space-x-1 truncate">
+                  <span>{meta.emoji}</span>
+                  <span className="truncate">{meta.label.split('&')[0]}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shadow-sm animate-pulse" />
-            <span>Delayed / Critical</span>
-          </div>
-        </div>
-        <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
-          Towers = Budget & Progress • Ground Pads = Real Municipal Zones
         </div>
       </div>
 
-      {/* Floating Hover Project Inspection HUD */}
+      {/* BOTTOM-CENTER: Working-Time & Phase Timeline Bar */}
+      <div className="absolute bottom-3 left-1/2 transform -translate-x-1/2 z-20 pointer-events-auto hidden md:block max-w-xl w-full px-4">
+        <div className="p-2 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 shadow-2xl space-y-1.5">
+          {/* Phase Filter Tabs */}
+          <div className="flex items-center justify-between space-x-1 text-[11px] font-semibold">
+            <button
+              onClick={() => setPhaseFilter('all')}
+              className={`flex-1 py-1 px-2 rounded-lg text-center transition-all ${
+                phaseFilter === 'all'
+                  ? 'bg-slate-800 text-white font-bold border border-slate-700 shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              All ({aggregateKPIs.total})
+            </button>
+            <button
+              onClick={() => setPhaseFilter('not_started')}
+              className={`flex-1 py-1 px-2 rounded-lg text-center transition-all ${
+                phaseFilter === 'not_started'
+                  ? 'bg-indigo-950 text-indigo-300 font-bold border border-indigo-800 shadow-xs'
+                  : 'text-slate-400 hover:text-indigo-300'
+              }`}
+            >
+              Not Started (0%)
+            </button>
+            <button
+              onClick={() => setPhaseFilter('in_progress')}
+              className={`flex-1 py-1 px-2 rounded-lg text-center transition-all ${
+                phaseFilter === 'in_progress'
+                  ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800 shadow-xs'
+                  : 'text-slate-400 hover:text-cyan-300'
+              }`}
+            >
+              In Progress
+            </button>
+            <button
+              onClick={() => setPhaseFilter('delayed')}
+              className={`flex-1 py-1 px-2 rounded-lg text-center transition-all ${
+                phaseFilter === 'delayed'
+                  ? 'bg-rose-950 text-rose-300 font-bold border border-rose-800 shadow-xs'
+                  : 'text-slate-400 hover:text-rose-400'
+              }`}
+            >
+              Delayed / Attention ({aggregateKPIs.delayedCount})
+            </button>
+            <button
+              onClick={() => setPhaseFilter('completed')}
+              className={`flex-1 py-1 px-2 rounded-lg text-center transition-all ${
+                phaseFilter === 'completed'
+                  ? 'bg-blue-950 text-blue-300 font-bold border border-blue-800 shadow-xs'
+                  : 'text-slate-400 hover:text-blue-300'
+              }`}
+            >
+              Completed
+            </button>
+          </div>
+
+          {/* Timeline KPI Ticker */}
+          <div className="flex items-center justify-between px-2 pt-1 border-t border-slate-800 text-[10px] font-mono text-slate-400">
+            <span>
+              Showing: <strong className="text-white">{aggregateKPIs.filteredCount}</strong> projects
+            </span>
+            <span>
+              Avg Progress: <strong className="text-emerald-400">{aggregateKPIs.avgProgress}%</strong>
+            </span>
+            <span>
+              Delayed: <strong className="text-rose-400">{aggregateKPIs.delayedCount}</strong>
+            </span>
+            <span>
+              Budget: <strong className="text-cyan-400">৳{aggregateKPIs.totalBudget.toLocaleString()} Cr</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* FLOATING HOVER INSPECTOR CARD (Enriched with Working Time & Pace) */}
       {hoveredProject && (
         <div
           className="absolute z-30 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3"
@@ -841,51 +1144,100 @@ export const DigitalTwin3D: React.FC<DigitalTwin3DProps> = ({
             top: `${hoveredProject.screenY}px`,
           }}
         >
-          <div className="w-72 max-w-[calc(100vw-32px)] p-3 rounded-xl bg-slate-900/95 backdrop-blur-md border border-cyan-500/30 text-white shadow-2xl">
-            <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800">
-              <div>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-semibold">
-                  {hoveredProject.project.project_id}
-                </span>
-                <h4 className="text-xs font-semibold text-slate-100 mt-1 line-clamp-1">
+          <div className="w-80 max-w-[calc(100vw-32px)] p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-cyan-500/40 text-white shadow-2xl space-y-2.5">
+            {/* Header: Project ID, Category & Pace Badge */}
+            <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-bold">
+                    {hoveredProject.project.project_id}
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-400">
+                    {CATEGORY_META[hoveredProject.category].emoji} {CATEGORY_META[hoveredProject.category].label.split('&')[0]}
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-slate-100 line-clamp-1 leading-snug">
                   {hoveredProject.project.name}
                 </h4>
               </div>
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                  hoveredProject.risk.risk_tier === 'Critical'
-                    ? 'bg-rose-950 text-rose-400 border border-rose-800'
-                    : hoveredProject.risk.risk_tier === 'Elevated'
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                  hoveredProject.paceInfo.pace === 'Delayed'
+                    ? 'bg-rose-950 text-rose-400 border border-rose-800 animate-pulse'
+                    : hoveredProject.paceInfo.pace === 'At Risk'
                     ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                    : hoveredProject.paceInfo.pace === 'Ahead'
+                    ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                    : hoveredProject.paceInfo.pace === 'Completed'
+                    ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                    : hoveredProject.paceInfo.pace === 'Not Started'
+                    ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
                     : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                 }`}
               >
-                {hoveredProject.risk.risk_tier} Risk
+                ● {hoveredProject.paceInfo.pace}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 my-2 text-[11px]">
-              <div>
-                <span className="text-slate-400">Budget:</span>
-                <p className="font-semibold text-cyan-400 font-mono">৳{hoveredProject.project.cost} Cr</p>
+            {/* Working Time & Schedule Window */}
+            <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] space-y-1">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="flex items-center space-x-1">
+                  <Clock className="w-3 h-3 text-cyan-400" />
+                  <span>Working Time Window:</span>
+                </span>
+                <span className="font-mono text-slate-200">{hoveredProject.paceInfo.durationYears} Years</span>
               </div>
-              <div>
-                <span className="text-slate-400">Progress:</span>
-                <p className="font-semibold text-emerald-400 font-mono">{hoveredProject.project.completion}%</p>
-              </div>
-              <div>
-                <span className="text-slate-400">Agency:</span>
-                <p className="font-medium text-slate-300">{hoveredProject.project.exec}</p>
-              </div>
-              <div>
-                <span className="text-slate-400">Location:</span>
-                <p className="font-medium text-slate-300">{hoveredProject.project.location}</p>
+              <div className="font-mono text-[10px] text-cyan-300 flex items-center justify-between">
+                <span>Start: {hoveredProject.paceInfo.startDateText}</span>
+                <span>→</span>
+                <span>Est End: {hoveredProject.paceInfo.endDateText}</span>
               </div>
             </div>
 
-            <div className="text-[10px] text-cyan-300/80 bg-cyan-950/40 p-1.5 rounded border border-cyan-900/50 flex items-center justify-between">
-              <span>Click tower to inspect full DPP dossier</span>
-              <span className="font-bold">→</span>
+            {/* Execution Progress & Budget Spent vs Allocated */}
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Physical Progress:</span>
+                <span className="font-bold text-emerald-400 font-mono">
+                  {hoveredProject.project.completion}%
+                  <span className="text-slate-500 font-normal ml-1">
+                    (Expected {hoveredProject.paceInfo.expectedProgress}%)
+                  </span>
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, hoveredProject.project.completion)}%`,
+                    backgroundColor: hoveredProject.colorStr,
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                <div>
+                  <span className="text-slate-400">Budget Spent / Total:</span>
+                  <p className="font-semibold text-cyan-400 font-mono">
+                    ৳{hoveredProject.project.actual_cost || 0} / ৳{hoveredProject.project.cost} Cr
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Zone & Agency:</span>
+                  <p className="font-semibold text-slate-200 truncate">
+                    {hoveredProject.project.location} • {hoveredProject.project.exec}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Call to action */}
+            <div className="text-[10px] text-cyan-300/90 bg-cyan-950/40 px-2 py-1.5 rounded-lg border border-cyan-900/60 flex items-center justify-between">
+              <span>Click building to frame & inspect DPP details</span>
+              <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />
             </div>
           </div>
         </div>
